@@ -1,0 +1,160 @@
+<!doctype html><html><head><title>Decorated Apartment in Prime Location For Sale in Sin El Fil -  JSK Real Estate</title></head><body>
+ image.style.height = height + 'px';
+        });
+    }
+
+    const images = [{"src":"https:\/\/s3.amazonaws.com\/propertybase-clients\/00D1N000001wJBjUAM\/a0OUg000007nPpF\/zhoymwg5y\/1%20%283%29.jpeg","thumb":"https:\/\/s3.amazonaws.com\/propertybase-clients\/00D1N000001wJBjUAM\/a0OUg000007nPpF\/zhoymwg5y\/1%20%283%29.jpeg"},{"src":"https:\/\/s3.amazonaws.com\/propertybase-clients\/00D1N000001wJBjUAM\/a0OUg000007nPpF\/iq4i6wixr\/1%20%282%29.jpeg","thumb":"https:\/\/s3.amazonaws.com\/propertybase-clients\/00D1N000001wJBjUAM\/a0OUg000007nPpF\/iq4i6wixr\/1%20%282%29.jpeg"},{"src":"https:\/\/s3.amazonaws.com\/propertybase-clients\/00D1N000001wJBjUAM\/a0OUg000007nPpF\/dhug8p8tg\/1%20%285%29.jpeg","thumb":"https:\/\/s3.amazonaws.com\/propertybase-clients\/00D1N000001wJBjUAM\/a0OUg000007nPpF\/dhug8p8tg\/1%20%285%29.jpeg"},{"src":"https:\/\/s3.amazonaws.com\/propertybase-clients\/00D1N000001wJBjUAM\/a0OUg000007nPpF\/cookrcmzl\/1%20%284%29.jpeg","thumb":"https:\/\/s3.amazonaws.com\/propertybase-clients\/00D1N000001wJBjUAM\/a0OUg000007nPpF\/cookrcmzl\/1%20%284%29.jpeg"}];
+
+    const lg = document.getElementById('lightgallery');
+
+    // Get the plugin instance through the lightGallery main function
+    const plugin = lightGallery(lg, {
+        plugins: [lgThumbnail, lgVideo],
+        dynamic: true,
+        dynamicEl: images,
+        closeOnTap: true,
+        download: false,
+        mobileSettings: {controls: false, showCloseIcon: true, download: false,}
+    });
+
+    function openImgOnclick(index) {
+        plugin.openGallery(index);
+    }
+</script>
+        <div class="flex gap-[40px]  md:justify-between flex-col md:flex-row my-10">
+    <div class="">
+        <div style="border-bottom: solid 1px black" class="pb-5">
+            <p class="text-[#AD2F36] poppins-bold text-4xl mb-5 flex gap-2"> $400,000 </p>
+            <div class="flex text-[#595959] mb-5 ">
+                <div class="max-[443px]:pr-[10px] pt-1 pr-3 justify-center items-center text-center" style="border-right: solid 1px #CACACA">
+                    Apartment
+                </div>
+                                    <div class="max-[443px]:px-[10px] px-3" style="">
+                        <img class="inline w-[20px] h-[30px]" src="/images/vector1.svg" alt="Bedrooms"> 3
+                    </div>
+                                                    <div class="max-[443px]:px-[10px] px-3" style="">
+                        <img class="inline w-[20px] h-[30px]" src="/images/vector2.svg" alt="Bathrooms"> 3
+                    </div>
+                                <div class="max-[443px]:pl-[10px] pl-3">
+                    <img class="inline w-[20px] h-[30px]" src="/images/vector3.svg" alt="Area">
+                    210 m²</div>
+            </div>
+            <p class="mb-4 poppins-bold text-[#3B3B3B]">Decorated Apartment in Prime Location For Sale in Sin El Fil</p>
+            <address class="poppins-light property-location flex items-center gap-[5px]" style="color: #555 ;">
+                <img class="w-[20px]" src="/images/location-icon.svg" alt="location_icon"> Sin El Fil, El Metn, Mount Lebanon
+            </address>
+            <address class="poppins-light property-location" style="color: #555 ;">
+                Ref: L22296
+            </address>
+        </div>
+        <div class="">
+            <p class="my-5 poppins-bold text-4xl text-[#AD2F36]">Description</p>
+            <p class="text-[#3B3B3B] poppins" id="property-description">
+
+            </p>
+        </div>
+    </div>
+    <div class="flex flex-col gap-6 items-center">
+    <div class=" w-full md:w-max flex flex-col items-center bg-[#F7F7F7] py-10 px-5 text-[#3B3B3B]"
+         style="border-radius: 20px;">
+        <div class="hidden flex-nowrap justify-center gap-2  md:flex select-none">
+            <div
+                class="flex flex-nowrap items-center cursor-pointer poppins-bold rounded-full bg-[#AD2F36] px-6 py-2 text-center text-white"
+                onclick="appendActionToDataLayer('whatsapp' , 'https://api.whatsapp.com/send?phone=%2B96170200076&text=Hello%2C+I+would+like+to+learn+more+information+about+this+property+you+have+listed+on+JSK+Real+Estate%2C+REFERENCE%3A+L22296+https://www.jskre.com/properties/decorated-apartment-in-prime-location-for-sale-in-sin-el-fil-l22296 ')">
+
+                <img class="w-[15px] h-[15px] inline-block mr-1" src="/images/socialMediaIcons/whatsappwhiteicon.svg"
+                     alt="WhatsApp">WhatsApp
+            </div>
+            <div
+                class="flex flex-nowrap items-center cursor-pointer poppins-bold rounded-full bg-[#AD2F36] px-6 py-2 text-center text-white"
+                onclick="appendActionToDataLayer('call' , 'tel:+96170200076')">
+                <img class="w-[15px] h-[15px] inline-block mr-1" src="/images/socialMediaIcons/dial.svg"
+                     alt="Call">Call
+            </div>
+        </div>
+
+        <div class="h-[1px] w-full bg-black my-10 hidden md:block"></div>
+        <div class="flex flex-col gap-4">
+            <span class="cursor-pointer poppins-bold rounded-full bg-[#3B3B3B] px-10 py-2 text-center text-white"
+                  onclick="scrollToEnquireForm()">
+                BOOK A SHOWING
+            </span>
+        </div>
+    </div>
+
+    <div class="md:w-max hidden md:flex flex-col items-center bg-[#F7F7F7] py-10 px-5 text-[#3B3B3B]"
+         style="border-radius: 20px; width: 100%">
+        <p class="text-center mb-3 text-[#AD2F36] poppins-bold">Share This Property</p>
+        <div class="flex justify-center">
+            <a href="#" class="share-button" id="share-btn"><p class="mt-1 text-[#AD2F36] poppins-semibold">
+                    <img class="inline mr-2.5 w-[20px]" src="/images/share.svg" alt="Share">
+                    Share
+                </p>
+            </a>
+        </div>
+    </div>
+
+    <div class=" w-full md:w-max flex flex-col items-center bg-[#F7F7F7] py-10 px-5 text-[#3B3B3B]"
+         style="border-radius: 20px;  width: 100%">
+        <p class="text-center mb-8">
+            <a class=" poppins-bold text-[#AD2F36]">Need to sell first? Book a valuation</a>
+        </p>
+        <div class="flex flex-col gap-4 mb-5">
+            <span onclick="appendActionToDataLayer('value_my_property' , '/valuation')"
+                  class="cursor-pointer poppins-bold rounded-full text-[#3B3B3B] px-10 py-2 "
+                  style="border: black 1px solid">
+                VALUE MY PROPERTY
+            </span>
+        </div>
+    </div>
+</div>
+
+<script>
+    function scrollToEnquireForm() {
+        // appendActionToDataLayer('book_a_viewing')
+        document.getElementById('enquire-about-form').scrollIntoView({behavior: "smooth"});
+    }
+
+    const shareButtons = document.getElementsByClassName('share-button');
+    for (let i = 0; i < shareButtons.length; i++) {
+        shareButtons[i].addEventListener('click', (e) => {
+            e.preventDefault();
+            const shareData = {
+                title: 'JSK Real Estate',
+                text: 'Check out this news from JSK Real Estate',
+                url: window.location.href
+            }
+            if (navigator.share && navigator.canShare(shareData)) {
+                navigator.share(shareData)
+                    .then(() => console.log('Successful share'))
+                    .catch((error) => console.log('Error sharing', error));
+            } else {
+                // Do something else like copying the data to the clipboard
+                console.error('Web Share API is not supported.');
+            }
+
+        });
+    }
+</script>
+<style>
+    input, textarea {
+        background: transparent;
+        border-bottom: white 1px solid;
+    }
+</style>
+</div>
+<div class="mb-10">
+
+
+</div>
+
+<script>
+    let description = "Deluxe Apartment l Prime Location l Sin El Fil\n\n- 210 m\u00b2\n- 2 Receptions\n- 1 Dining Area\n- 1 Kitchen\n- 3 Bedrooms including 1 Master\n- 3 Bathrooms\n- Maid;s Room with WC\n- 1 Storage Unit\n- 1 Underground Parking Space\n\nA 210 square meter deluxe apartment in prime location is available for sale in Sin El Fil.\n\nIt consists of 2 receptions, dining area, kitchen, 3 bedrooms including 1 masters, 3 bathrooms and maid's room with wc.\n\nMoreover, it benefits from storage unit and 1 underground parking space.\n\nTo discuss or to arrange a showing, please call or Whatsapp JSK Real Estate on +96170200076";
+    // Replace all the \n with <br> in the description
+    description = description.replace(/(?:\r\n|\r|\n)/g, '<br>');
+    document.getElementById('property-description').innerHTML = description;
+
+</script>
+        <div class="bg-[#F7F7F7] py-5 px-10 md:px-20 rounded-[20px] mb-10" id="enquire-about-form">
+    <h2 class="text-[#AD2F36] text-3xl md:text-5xl poppins-bold text-center py-5">
+</body></html>

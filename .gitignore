@@ -1,0 +1,16 @@
+# Scraped data and generated reports are local artefacts, not source.
+data/
+out/
+*.db
+*.db-wal
+*.db-shm
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+build/
+dist/
+.venv/
+venv/

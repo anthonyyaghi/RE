@@ -1,0 +1,77 @@
+# jskre deal finder configuration
+#
+# Every number below is an assumption you own. The defaults are plausible
+# placeholders, NOT market research. Before you act on any output, replace the
+# renovation rates with real contractor quotes and the fee percentages with what
+# your notary and agent actually charge.
+
+database:
+  path: data/jskre.db
+
+http:
+  # Be identifiable and slow. The site is someone's business, not a dataset.
+  user_agent: "jskre-deal-finder/1.0 (personal market research)"
+  delay_seconds: 1.5          # minimum gap between requests
+  jitter_seconds: 0.75        # random extra delay
+  timeout_seconds: 30
+  max_retries: 4
+  respect_robots: true        # leave this on
+
+scrape:
+  # 'for-sale' covers everything; narrow it to crawl a slice more often.
+  # Options: for-sale, apartment-for-sale, villa-for-sale, chalet-for-sale,
+  #          building-for-sale
+  category: apartment-for-sale
+
+analysis:
+  # Restrict comps and candidates to these site categories. Null = all types.
+  # The site labels most residential stock 'Apartment' even when the title
+  # says chalet, so keep Apartment in the list.
+  property_types:
+    - Apartment
+    - Duplex
+    - Penthouse
+
+assumptions:
+  # ---- acquisition ----
+  negotiation_discount: 0.07   # you expect to buy 7% below asking
+  purchase_fees_pct: 0.06      # registration + notary + legal, as % of price
+                               # VERIFY: Lebanese registration fees change;
+                               # ask your notary for the current schedule.
+
+  # ---- renovation, USD per m² of built area ----
+  reno_cost_light: 180         # paint, floors, fixtures
+  reno_cost_medium: 320        # + kitchen, bathrooms, electrics
+  reno_cost_full: 550          # gut / core-and-shell finishing
+  reno_contingency_pct: 0.15   # added on top of the estimate
+
+  # ---- holding ----
+  holding_months: 8            # purchase to resale
+  holding_cost_per_month: 250  # building fees, utilities, insurance
+
+  # ---- exit ----
+  sale_commission_pct: 0.025   # agency fee when you sell
+  exit_percentile: 0.60        # where you sell within the finished-comp range.
+                               # 0.5 = median (conservative), 0.75 = optimistic.
+
+  # ---- comp quality ----
+  min_comps: 5                 # fewer than this and confidence drops
+  comp_area_tolerance: 0.45    # comps within ±45% of the subject's area
+  max_comp_ppm2_outlier: 3.0   # ignore comps above 3× the market median
+
+  # ---- guardrails against non-comparable comps ----
+  # These exist because the failure mode of this kind of model is flattering,
+  # not conservative: a flat in a cheap town compared against stock from an
+  # expensive one shows a fantasy 150% ROI. Both gates reject rather than
+  # flatter. Widen them only when you have enough data to know better.
+  max_benchmark_scope: district # widest comp scope allowed to pass screening.
+                                # town | district | governorate | global
+  max_resale_uplift: 2.5        # reject if modelled resale/m² exceeds this
+                                # multiple of asking/m² — that gap almost always
+                                # means bad comps, not a bargain
+
+  # ---- screening ----
+  min_profit_usd: 15000
+  min_roi: 0.15                # 15% return on all-in cost
+  max_price_usd: null          # your budget ceiling, e.g. 250000
+  min_area_m2: 60
