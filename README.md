@@ -148,6 +148,32 @@ benchmarks. Crawl the full inventory before trusting any ranking.
 | `changes` | Price cuts and delistings in the last N days. |
 | `status` | Row counts and recent crawl history. |
 | `repair` | Re-clean stored descriptions in place, without refetching. |
+| `photos` | Photo-based condition assessment via the Claude API: `estimate` / `submit` / `poll` / `status`. |
+| `export` | Write portable `exports/*.jsonl.gz` snapshots (committable; survive ephemeral environments). |
+
+### Photo-based condition assessment
+
+The text classifier reads sales copy; the photos are the closest thing to
+ground truth. `jskre photos` sends up to 4 photos per listing (as URLs — the
+API fetches them, nothing is downloaded locally) to the Claude API through the
+**Batch API** at half price, with a schema-enforced verdict per listing:
+condition (`shell … luxury`), kitchen/bathroom era, renovation scope needed,
+confidence, and concrete visual evidence. Results land in `photo_assessments`
+and are append-only facts — blending them into the margin model is a separate
+step.
+
+```bash
+export ANTHROPIC_API_KEY=sk-ant-...
+python -m jskre photos estimate   # prices the pending queue before spending
+python -m jskre photos submit     # one batch for everything pending
+python -m jskre photos poll       # import results when the batch ends (<1h)
+```
+
+Batches persist server-side for 29 days and ids are recorded in the database,
+so submit and poll can happen in different sessions. Photo URLs come from
+detail pages, so run the `details` backlog first. Full-inventory cost is
+roughly $65 on `claude-opus-5`, $26 on `claude-sonnet-5`, $13 on
+`claude-haiku-4-5` — `estimate` prints the live figure.
 
 ### Descriptions are the classifier's input, so their quality is the ceiling
 

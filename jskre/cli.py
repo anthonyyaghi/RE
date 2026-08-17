@@ -75,6 +75,21 @@ def build_parser() -> argparse.ArgumentParser:
         "repair", help="re-clean stored descriptions in place (no refetching)"
     )
 
+    p_photos = sub.add_parser(
+        "photos", help="photo-based condition assessment via the Claude API"
+    )
+    p_photos.add_argument(
+        "action", choices=["estimate", "submit", "poll", "status"],
+        help="estimate cost / submit a batch / poll+import results / show state",
+    )
+    p_photos.add_argument("--model", default=None, help="model id (default claude-opus-5)")
+    p_photos.add_argument("--limit", type=int, default=None, help="cap listings per batch")
+
+    p_export = sub.add_parser(
+        "export", help="write portable snapshots of the data to exports/"
+    )
+    p_export.add_argument("--outdir", default="exports")
+
     p_serve = sub.add_parser("serve", help="run the web UI")
     p_serve.add_argument("--host", default="127.0.0.1")
     p_serve.add_argument("--port", type=int, default=8765)
@@ -197,6 +212,43 @@ def main(argv: list[str] | None = None) -> int:
             )
             print(f"{len(deals)} candidates passed screening.")
             print(f"  {deals_csv}\n  {market_csv}\n  {html_path}")
+            return 0
+
+        if args.command == "photos":
+            from . import photos
+
+            if args.action == "estimate":
+                info = photos.estimate(db, limit=args.limit)
+                print(f"pending listings with photos : {info['pending_listings']:,}")
+                print(f"images to assess             : {info['images']:,}")
+                print(f"estimated input tokens       : {info['est_input_tokens']:,}")
+                print("estimated batch cost:")
+                for model, usd in info["est_batch_cost_usd"].items():
+                    print(f"  {model:20} ${usd:,.2f}")
+                return 0
+            if args.action == "submit":
+                batch_id = photos.submit(
+                    db, model=args.model or photos.DEFAULT_MODEL, limit=args.limit
+                )
+                print(f"batch id: {batch_id}" if batch_id else "nothing to submit")
+                return 0
+            if args.action == "poll":
+                summary = photos.refresh_and_import(db)
+                print(
+                    f"imported {summary['imported']}, errored {summary['errored']}, "
+                    f"still processing {summary['still_processing']} batch(es)"
+                )
+                return 0
+            if args.action == "status":
+                for row in photos.status(db):
+                    print(row)
+                return 0
+
+        if args.command == "export":
+            from .export import export_all
+
+            for path in export_all(db, args.outdir):
+                print(path)
             return 0
 
         if args.command == "repair":
