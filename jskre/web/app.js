@@ -705,6 +705,11 @@ function drawerContent(d) {
       el('dt', {}, 'Condition'), el('dd', {},
         d.condition_label.replace(/_/g, ' '),
         d.condition_signals.length ? ` — ${d.condition_signals.join('; ')}` : ''),
+      d.features && d.features.length ? el('dt', {}, 'Features') : null,
+      d.features && d.features.length
+        ? el('dd', {}, el('div', { style: 'display:flex; gap:.25rem; flex-wrap:wrap' },
+            d.features.map((x) => el('span', { class: 'chip' }, x))))
+        : null,
       el('dt', {}, 'First seen'), el('dd', {}, `${shortDate(d.first_seen)} (${d.price_changes || 0} price changes)`),
     ),
   ];
@@ -725,7 +730,11 @@ function drawerContent(d) {
         el('dt', {}, 'Modelled profit'),
         el('dd', { class: cls(deal.profit_usd) }, `${money(deal.profit_usd)} · ROI ${pct(deal.roi_pct)} · margin ${pct(deal.margin_pct)}`),
         el('dt', {}, 'Confidence'), el('dd', {}, deal.confidence),
-        el('dt', {}, 'Uplift ratio'), el('dd', {}, `${deal.resale_uplift_ratio}× asking $/m²`)),
+        el('dt', {}, 'Uplift ratio'), el('dd', {}, `${deal.resale_uplift_ratio}× asking $/m²`),
+        deal.feature_adjustment_pct ? el('dt', {}, 'Feature adjustment') : null,
+        deal.feature_adjustment_pct
+          ? el('dd', {}, `${deal.feature_adjustment_pct > 0 ? '+' : ''}${deal.feature_adjustment_pct}% — comps moved toward this listing's feature profile`)
+          : null),
       deal.flags ? el('p', { class: 'note-box', style: 'margin-top:.8rem' },
         el('strong', {}, 'Flags: '), deal.flags) : null);
   } else {

@@ -45,7 +45,10 @@ SIGNALS: list[tuple[str, float, str]] = [
     (r"\brenovation\s+(?:potential|opportunity)\b", -0.6, "renovation potential"),
     (r"\bpotential\s+to\s+(?:renovate|improve)\b", -0.6, "renovation potential"),
     (r"\bhandover\s+(?:condition|state)\b", -0.4, "handover condition"),
-    (r"\bunder\s+construction\b", -0.4, "under construction"),
+    # NOTE: "under construction" is deliberately NOT a signal. It marks a new
+    # build sold off-plan -- measured at +15% within-town, i.e. premium stock,
+    # the opposite of a renovation target. It is handled as a feature
+    # (features.new_build) and excluded from candidates, not scored here.
     (r"\bopportunity\s+for\s+investors?\b", -0.3, "investor opportunity"),
     (r"\bbargain\b|\bmust\s+sell\b|\burgent(?:ly)?\s+sale\b", -0.3, "distressed wording"),
     (r"\bempty\b|\bvacant\b", -0.15, "vacant"),
@@ -54,6 +57,7 @@ SIGNALS: list[tuple[str, float, str]] = [
     (r"\bnewly\s+(?:built|renovated|refurbished|finished)\b", 0.8, "newly renovated"),
     (r"\bfully\s+(?:renovated|refurbished)\b", 0.9, "fully renovated"),
     (r"\bturn[-\s]?key\b", 0.9, "turnkey"),
+    (r"\bmove[-\s]?in[-\s]?ready\b", 0.7, "move-in ready"),
     (r"\bdeluxe\b", 0.6, "deluxe"),
     (r"\bhigh[-\s]end\b|\bluxur(?:y|ious)\b|\bpremium\s+finish\w*\b", 0.7, "high-end"),
     (r"\bdecorated\b", 0.6, "decorated"),

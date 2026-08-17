@@ -35,6 +35,7 @@ from .analyze import (
     rank_deals,
 )
 from .condition import assess
+from .features import extract, summary as feature_summary
 from .config import load_config
 from .db import Database
 from .http import PoliteClient
@@ -556,6 +557,7 @@ class ApiHandler(BaseHTTPRequestHandler):
         except (json.JSONDecodeError, TypeError):
             payload["image_urls"] = []
         payload["price_history"] = history
+        payload["features"] = feature_summary(extract(row["title"], row["description"]))
 
         # Deal maths for this one listing, plus the comps behind it.
         deal = None

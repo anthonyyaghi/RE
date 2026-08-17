@@ -68,13 +68,35 @@ everything downstream.
    keyword signals — `core & shell`, `needs renovation`, `as-is` on one side;
    `turnkey`, `fully renovated`, `decorated` on the other. Scores run −1 to +1.
 
-2. **Comps** (`analyze.py`) build a resale benchmark per micro-market from
+2. **Features** (`features.py`) recover structure from the prose. JSK writes
+   semi-standardised bullet lists, so sea view, terrace (with m² when stated),
+   garden, parking count, maid's room, storage/cave, rooftop and more parse
+   reliably. Three uses:
+   - **Comp adjustment.** Attribute premiums are *measured* on the data itself
+     (within-town regression, town effects absorbed — e.g. garden +18%, sea
+     view +8.5%, terrace +7.6% at the time of writing) and each comp's $/m² is
+     moved toward the subject's feature profile before the percentile is
+     taken — the standard appraisal adjustment, with fitted rather than
+     guessed premiums. Adjustments are clamped (±25% per coefficient, ±30%
+     per comp) and anything above ±15% is flagged for manual verification.
+   - **New-build exclusion.** "Under construction / off-plan / payment plan"
+     stock is developer product trading at a measured ~+15% within-town
+     premium — the opposite of a renovation target. It is excluded from the
+     shortlist (visible under `--no-screens`), not scored as needing work.
+   - **Phantom-area correction.** A minority of listings bundle terrace or
+     garden into the headline m² (median +63% fake area when they do). When
+     the prose states a smaller indoor figure, $/m², renovation cost and exit
+     are all computed on indoor area.
+   Two attributes are simply not published and cannot be extracted: building
+   age (~0.1% of listings) and floor number (~0.6%).
+
+3. **Comps** (`analyze.py`) build a resale benchmark per micro-market from
    **finished listings only**, at a configurable percentile (default 60th).
    Unfinished stock is deliberately excluded — including it would drag the exit
    price down toward the very prices you are trying to beat. Scope narrows to
    the town where possible, falling back to district, then governorate.
 
-3. **Margin** nets the whole round trip:
+4. **Margin** nets the whole round trip:
 
    ```
    all-in  = asking × (1 − negotiation) + purchase fees
@@ -86,7 +108,7 @@ everything downstream.
    profit  = exit − all-in          ROI = profit / all-in
    ```
 
-4. **Screening** drops anything below your profit and ROI minimums, *and*
+5. **Screening** drops anything below your profit and ROI minimums, *and*
    anything whose comps aren't credible (see below).
 
 ---
@@ -251,6 +273,7 @@ jskre/
   db.py          SQLite schema, upserts, change history, migrations
   scrape.py      crawl orchestration (index pass, detail pass)
   condition.py   renovation-state classifier
+  features.py    structured feature extraction + measured premiums
   analyze.py     comps engine, margin model, guardrails
   report.py      CSV + HTML output
   server.py      JSON API + background jobs for the web UI

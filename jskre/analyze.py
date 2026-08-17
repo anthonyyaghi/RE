@@ -23,12 +23,14 @@ calibrate, not as market truth.
 
 from __future__ import annotations
 
+import math
 import sqlite3
 import statistics
 from dataclasses import dataclass, asdict
 from typing import Iterable, Sequence
 
 from .condition import assess
+from .features import PropertyFeatures, effective_indoor_m2, extract, summary
 
 # --------------------------------------------------------------------- config
 
@@ -82,6 +84,88 @@ class Assumptions:
         return cls(**known)
 
 
+# --------------------------------------------------- feature-adjusted comps
+
+# Features used to adjust comps toward the subject's profile. Chosen for
+# coverage and for surviving a within-town regression with a sane sign;
+# deliberately excluded: elevator (its negative coefficient is a
+# mentioned-in-the-ad selection artifact, not a physical discount) and
+# ground_floor (n=3 in the whole inventory).
+ADJUST_FEATURES = (
+    "sea_view", "open_view", "terrace", "garden", "maid_room",
+    "storage", "rooftop", "gated", "chimney", "furnished",
+    "parking", "new_build",
+)
+
+# Bounds that keep the adjustment honest: no single coefficient may imply
+# more than +/-25%, and no comp may be adjusted by more than +/-30% overall.
+MAX_BETA = 0.25
+MAX_TOTAL_ADJUST = 0.30
+
+
+def feature_vector(f: PropertyFeatures) -> list[float]:
+    return [
+        1.0 * f.sea_view, 1.0 * f.open_view, 1.0 * f.terrace, 1.0 * f.garden,
+        1.0 * f.maid_room, 1.0 * f.storage, 1.0 * f.rooftop, 1.0 * f.gated,
+        1.0 * f.chimney, 1.0 * f.furnished,
+        float(min(f.parking_spaces, 3)), 1.0 * f.new_build,
+    ]
+
+
+def fit_within_town_betas(
+    samples: Sequence[tuple[str, float, list[float]]],
+    min_town: int = 8,
+) -> list[float]:
+    """OLS of log($/m²) on features, with town fixed effects absorbed.
+
+    Demeaning y and x within each town removes the location effect entirely,
+    so the coefficients measure what a feature adds *relative to neighbours* --
+    which is exactly the sense in which a comp needs adjusting. Pure Python:
+    the design is ~2,500 x 12, trivial for normal equations.
+    """
+    k = len(ADJUST_FEATURES)
+    by_town: dict[str, list[tuple[float, list[float]]]] = {}
+    for town, y, x in samples:
+        by_town.setdefault(town or "", []).append((y, x))
+
+    ys: list[float] = []
+    xs: list[list[float]] = []
+    for obs in by_town.values():
+        if len(obs) < min_town:
+            continue
+        my = statistics.mean(o[0] for o in obs)
+        mx = [statistics.mean(o[1][j] for o in obs) for j in range(k)]
+        for y, x in obs:
+            ys.append(y - my)
+            xs.append([x[j] - mx[j] for j in range(k)])
+
+    # Too little data to estimate anything: adjustment becomes a no-op.
+    if len(ys) < 5 * k:
+        return [0.0] * k
+
+    xtx = [[sum(r[a] * r[b] for r in xs) for b in range(k)] for a in range(k)]
+    xty = [sum(xs[i][a] * ys[i] for i in range(len(xs))) for a in range(k)]
+    for a in range(k):
+        xtx[a][a] += 1e-6  # ridge epsilon for singular columns (no variance)
+
+    m = [row[:] + [xty[a]] for a, row in enumerate(xtx)]
+    for col in range(k):
+        pivot = max(range(col, k), key=lambda r: abs(m[r][col]))
+        m[col], m[pivot] = m[pivot], m[col]
+        if abs(m[col][col]) < 1e-12:
+            continue
+        for r2 in range(k):
+            if r2 != col:
+                factor = m[r2][col] / m[col][col]
+                for c2 in range(col, k + 1):
+                    m[r2][c2] -= factor * m[col][c2]
+
+    betas = [
+        m[a][k] / m[a][a] if abs(m[a][a]) > 1e-12 else 0.0 for a in range(k)
+    ]
+    return [max(-MAX_BETA, min(MAX_BETA, b)) for b in betas]
+
+
 # ---------------------------------------------------------------------- comps
 
 
@@ -94,6 +178,9 @@ class Benchmark:
     n_comps: int
     low_ppm2: float
     high_ppm2: float
+    # How far feature adjustment moved the benchmark vs the raw comp pool,
+    # as a percentage. 0 when no adjustment was applied.
+    adjustment_pct: float = 0.0
 
     @property
     def is_weak(self) -> bool:
@@ -121,12 +208,16 @@ class CompsIndex:
         self.a = assumptions
         self.finished: list[dict] = []
         self.all_ppm2: list[float] = []
+        beta_samples: list[tuple[str, float, list[float]]] = []
 
         for row in rows:
             ppm2 = _ppm2(row)
             if ppm2 is None or ppm2 <= 0:
                 continue
             self.all_ppm2.append(ppm2)
+            feats = extract(row["title"], row["description"])
+            vec = feature_vector(feats)
+            beta_samples.append((row["town"] or "", math.log(ppm2), vec))
             condition = assess(row["title"], row["description"])
             if condition.is_finished:
                 self.finished.append(
@@ -137,8 +228,14 @@ class CompsIndex:
                         "district": row["district"],
                         "governorate": row["governorate"],
                         "property_type": row["property_type"],
+                        "fvec": vec,
                     }
                 )
+
+        # Attribute premiums, measured on the whole market (not just finished
+        # stock -- condition is orthogonal to whether a flat has a sea view,
+        # and the larger sample stabilises the fit).
+        self.betas = fit_within_town_betas(beta_samples)
 
         # A market-wide sanity ceiling so one mispriced trophy listing cannot
         # define a town's benchmark.
@@ -156,9 +253,21 @@ class CompsIndex:
         governorate: str | None,
         area_m2: float | None,
         property_type: str | None,
+        subject_features: PropertyFeatures | None = None,
     ) -> Benchmark | None:
-        """Best available benchmark, narrowest scope that clears min_comps."""
-        cache_key = (town, district, governorate, property_type, _area_bucket(area_m2))
+        """Best available benchmark, narrowest scope that clears min_comps.
+
+        When `subject_features` is given, each comp's $/m² is adjusted toward
+        the subject's feature profile using the fitted within-town premiums --
+        a comp WITH a sea view is marked down when valuing a subject WITHOUT
+        one, and vice versa. This is the standard appraisal adjustment, done
+        with measured rather than guessed premiums.
+        """
+        svec = feature_vector(subject_features) if subject_features else None
+        cache_key = (
+            town, district, governorate, property_type, _area_bucket(area_m2),
+            tuple(svec) if svec else None,
+        )
         if cache_key in self._cache:
             return self._cache[cache_key]
 
@@ -180,27 +289,43 @@ class CompsIndex:
             if len(sized) >= self.a.min_comps:
                 pool = sized
             if pool:
-                candidate = self._build(scope, key, pool)
+                candidate = self._build(scope, key, pool, svec)
                 result = candidate
                 if candidate.n_comps >= self.a.min_comps:
                     break
 
         if result is None and self.finished:
-            result = self._build("global", "all", self.finished)
+            result = self._build("global", "all", self.finished, svec)
 
         self._cache[cache_key] = result
         return result
 
-    def _build(self, scope: str, key: str, pool: list[dict]) -> Benchmark:
-        values = [c["ppm2"] for c in pool]
+    def _adjusted(self, comp: dict, svec: list[float] | None) -> float:
+        """A comp's $/m², moved toward the subject's feature profile."""
+        if svec is None or not any(self.betas):
+            return comp["ppm2"]
+        delta = sum(
+            b * (s - c) for b, s, c in zip(self.betas, svec, comp["fvec"])
+        )
+        delta = max(-MAX_TOTAL_ADJUST, min(MAX_TOTAL_ADJUST, delta))
+        return comp["ppm2"] * math.exp(delta)
+
+    def _build(
+        self, scope: str, key: str, pool: list[dict], svec: list[float] | None
+    ) -> Benchmark:
+        raw = [c["ppm2"] for c in pool]
+        values = [self._adjusted(c, svec) for c in pool]
+        raw_exit = percentile(raw, self.a.exit_percentile)
+        exit_ppm2 = percentile(values, self.a.exit_percentile)
         return Benchmark(
             scope=scope,
             key=key,
-            resale_ppm2=percentile(values, self.a.exit_percentile),
+            resale_ppm2=exit_ppm2,
             median_ppm2=statistics.median(values),
             n_comps=len(values),
             low_ppm2=min(values),
             high_ppm2=max(values),
+            adjustment_pct=round((exit_ppm2 / raw_exit - 1) * 100, 1) if raw_exit else 0.0,
         )
 
 
@@ -259,6 +384,10 @@ class DealAnalysis:
     condition_score: float
     condition_signals: str
     reno_depth: str
+    features: str
+    is_new_build: bool
+    effective_area_m2: float
+    feature_adjustment_pct: float
 
     resale_ppm2: float
     benchmark_scope: str
@@ -310,10 +439,17 @@ def analyse_listing(
     if not area or not price or area <= 0:
         return None
 
-    asking_ppm2 = price / area
+    feats = extract(row["title"], row["description"])
+    # If the prose states an indoor area materially below the headline, the
+    # headline bundles terrace/garden -- price against indoor m² only, or the
+    # listing shows phantom cheapness (median +63% fake area when bundled).
+    eff_area = effective_indoor_m2(area, feats) or area
+
+    asking_ppm2 = price / eff_area
     condition = assess(row["title"], row["description"])
     benchmark = comps.benchmark_for(
-        row["town"], row["district"], row["governorate"], area, row["property_type"]
+        row["town"], row["district"], row["governorate"], eff_area,
+        row["property_type"], subject_features=feats,
     )
     if benchmark is None:
         return None
@@ -327,11 +463,11 @@ def analyse_listing(
 
     purchase_price = price * (1 - a.negotiation_discount)
     purchase_fees = purchase_price * a.purchase_fees_pct
-    reno_cost = area * reno_rate * (1 + a.reno_contingency_pct)
+    reno_cost = eff_area * reno_rate * (1 + a.reno_contingency_pct)
     holding_cost = a.holding_months * a.holding_cost_per_month
     all_in = purchase_price + purchase_fees + reno_cost + holding_cost
 
-    gross_resale = benchmark.resale_ppm2 * area
+    gross_resale = benchmark.resale_ppm2 * eff_area
     selling_costs = gross_resale * a.sale_commission_pct
     net_resale = gross_resale - selling_costs
 
@@ -345,6 +481,22 @@ def analyse_listing(
     )
 
     flags: list[str] = []
+    if feats.new_build:
+        flags.append(
+            "new build / off-plan: developer stock, not a renovation play"
+        )
+    if eff_area != area:
+        flags.append(
+            f"headline {area:.0f} m² bundles outdoor space; "
+            f"priced on {eff_area:.0f} m² indoor"
+        )
+    if benchmark.adjustment_pct:
+        flags.append(f"comps feature-adjusted {benchmark.adjustment_pct:+.1f}%")
+    if abs(benchmark.adjustment_pct) >= 15:
+        flags.append(
+            "large feature adjustment: several premiums stacked - "
+            "verify the comps by hand before trusting"
+        )
     if benchmark.is_weak or benchmark.n_comps < a.min_comps:
         flags.append(f"thin comps (n={benchmark.n_comps})")
     if benchmark.scope in ("governorate", "global"):
@@ -392,6 +544,10 @@ def analyse_listing(
         condition_score=condition.score,
         condition_signals="; ".join(condition.signals),
         reno_depth=depth,
+        features="; ".join(summary(feats)),
+        is_new_build=feats.new_build,
+        effective_area_m2=eff_area,
+        feature_adjustment_pct=benchmark.adjustment_pct,
         resale_ppm2=round(benchmark.resale_ppm2, 1),
         benchmark_scope=benchmark.scope,
         benchmark_key=benchmark.key,
@@ -425,6 +581,11 @@ def _passes_screens(deal: DealAnalysis, a: Assumptions) -> bool:
     against stock from another town will always look spectacular, and letting
     those to the top of the table would make the whole report useless.
     """
+    if deal.is_new_build:
+        # Off-plan developer stock trades at a +15% within-town premium and
+        # has nothing to renovate -- a different investment thesis entirely.
+        # Visible under --no-screens, never in the ranked shortlist.
+        return False
     if deal.profit_usd < a.min_profit_usd:
         return False
     if deal.roi_pct < a.min_roi * 100:
