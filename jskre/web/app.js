@@ -206,6 +206,8 @@ function assumptionQuery() {
   }
   params.set('condition', $('#f-condition').value);
   params.set('town', $('#f-town').value);
+  if ($('#f-min-price').value) params.set('min_price', $('#f-min-price').value);
+  if ($('#f-max-price').value) params.set('max_price', $('#f-max-price').value);
   params.set('sort', $('#f-sort').value);
   params.set('screens', $('#f-screens').value);
   params.set('limit', '300');
@@ -993,6 +995,9 @@ function wire() {
 
   for (const id of ['#f-condition', '#f-town', '#f-sort', '#f-screens']) {
     $(id).addEventListener('change', loadCandidates);
+  }
+  for (const id of ['#f-min-price', '#f-max-price']) {
+    $(id).addEventListener('input', scheduleCandidates);
   }
   $('#save-assumptions').addEventListener('click', saveAssumptions);
   $('#reset-assumptions').addEventListener('click', () => {

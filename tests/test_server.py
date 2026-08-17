@@ -190,6 +190,30 @@ def test_candidates_condition_filter(live_server):
     assert {c["condition_label"] for c in data["candidates"]} == {"renovation_target"}
 
 
+def test_candidates_price_range_filter(live_server):
+    everything = get(live_server, "/api/candidates?screens=0")
+    prices = sorted(c["asking_price"] for c in everything["candidates"])
+    assert prices[0] == 150_000 and prices[-1] == 300_000  # T1 + the F comps
+
+    only_cheap = get(live_server, "/api/candidates?screens=0&max_price=200000")
+    assert [c["ref"] for c in only_cheap["candidates"]] == ["T1"]
+    assert all(c["asking_price"] <= 200_000 for c in only_cheap["candidates"])
+
+    only_dear = get(live_server, "/api/candidates?screens=0&min_price=200000")
+    assert all(c["asking_price"] >= 200_000 for c in only_dear["candidates"])
+    assert not any(c["ref"] == "T1" for c in only_dear["candidates"])
+
+    window = get(live_server,
+                 "/api/candidates?screens=0&min_price=100000&max_price=200000")
+    # The range narrows candidates but must not narrow the comp market.
+    assert window["market_size"] == 10
+    assert [c["ref"] for c in window["candidates"]] == ["T1"]
+
+    # Junk bounds are ignored rather than erroring.
+    junk = get(live_server, "/api/candidates?screens=0&max_price=banana")
+    assert junk["total"] == everything["total"]
+
+
 def test_candidates_town_filter_keeps_market_wide_comps(live_server):
     data = get(live_server, "/api/candidates?town=Jbeil")
     assert data["analysed"] == 10

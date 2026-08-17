@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, fields as dataclass_fields
+from functools import lru_cache
 
 _M2 = r"(?:m²|m2|sqm|square\s*met(?:er|re)s?)"
 
@@ -77,7 +78,7 @@ FLAG_PATTERNS: list[tuple[str, str]] = [
 FLAG_COMPILED = [(name, re.compile(p, re.I)) for name, p in FLAG_PATTERNS]
 
 
-@dataclass
+@dataclass(frozen=True)
 class PropertyFeatures:
     # Areas as stated in the prose, when stated.
     indoor_m2: float | None = None
@@ -120,30 +121,39 @@ def _first_number(match: re.Match[str] | None) -> float | None:
     return None
 
 
+@lru_cache(maxsize=8192)
 def extract(*texts: str | None) -> PropertyFeatures:
-    blob = " \n ".join(t for t in texts if t)
-    out = PropertyFeatures()
-    if not blob.strip():
-        return out
+    """Extract structured features from listing prose.
 
-    out.indoor_m2 = _first_number(INDOOR_RE.search(blob))
-    out.terrace_m2 = _first_number(TERRACE_AREA_RE.search(blob))
-    out.garden_m2 = _first_number(GARDEN_AREA_RE.search(blob))
+    Cached for the same reason `condition.assess` is: the web UI re-analyses
+    the full inventory on every assumption change, and ~40 regexes over 2,500
+    full-length descriptions cost ~700ms per pass. The result depends only on
+    the input text; PropertyFeatures is frozen so sharing cached instances is
+    safe.
+    """
+    blob = " \n ".join(t for t in texts if t)
+    if not blob.strip():
+        return PropertyFeatures()
+
+    fields: dict = {}
+    fields["indoor_m2"] = _first_number(INDOOR_RE.search(blob))
+    fields["terrace_m2"] = _first_number(TERRACE_AREA_RE.search(blob))
+    fields["garden_m2"] = _first_number(GARDEN_AREA_RE.search(blob))
 
     floor = _first_number(FLOOR_RE.search(blob))
-    out.floor = int(floor) if floor is not None and floor < 40 else None
+    fields["floor"] = int(floor) if floor is not None and floor < 40 else None
 
     if PARKING_RE.search(blob):
         counts = [int(n) for n in PARKING_N_RE.findall(blob) if int(n) <= 10]
-        out.parking_spaces = max(counts) if counts else 1
+        fields["parking_spaces"] = max(counts) if counts else 1
     if BALCONY_RE.search(blob):
         counts = [int(n) for n in BALCONY_N_RE.findall(blob) if int(n) <= 10]
-        out.balconies = max(counts) if counts else 1
+        fields["balconies"] = max(counts) if counts else 1
 
     for name, pattern in FLAG_COMPILED:
         if pattern.search(blob):
-            setattr(out, name, True)
-    return out
+            fields[name] = True
+    return PropertyFeatures(**fields)
 
 
 def summary(f: PropertyFeatures) -> list[str]:

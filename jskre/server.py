@@ -430,6 +430,21 @@ class ApiHandler(BaseHTTPRequestHandler):
         if town:
             needle = town.casefold()
             subject_rows = [r for r in rows if (r["town"] or "").casefold() == needle]
+        for param, keep in (
+            ("min_price", lambda price, bound: price >= bound),
+            ("max_price", lambda price, bound: price <= bound),
+        ):
+            raw = (query.get(param, [""])[0] or "").strip()
+            if not raw:
+                continue
+            try:
+                bound = float(raw)
+            except ValueError:
+                continue
+            subject_rows = [
+                r for r in subject_rows
+                if r["price_usd"] and keep(r["price_usd"], bound)
+            ]
 
         deals = rank_deals(
             subject_rows,
