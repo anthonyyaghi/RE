@@ -16,12 +16,10 @@ and only becomes meaningful once you have been running the scraper for a while.
 
 from __future__ import annotations
 
-import json
 import sqlite3
-from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Iterable, Iterator
+from typing import Iterable
 
 from .parse import Listing
 
@@ -51,7 +49,11 @@ CREATE TABLE IF NOT EXISTS properties (
     price_changes         INTEGER DEFAULT 0,
     is_active             INTEGER DEFAULT 1,
     delisted_at           TEXT,
-    detail_fetched_at     TEXT
+    detail_fetched_at     TEXT,
+    -- Consecutive complete crawls that did not see this listing. A full crawl
+    -- takes minutes, during which new listings shift items across page
+    -- boundaries, so a single miss is not evidence of a sale.
+    missed_crawls         INTEGER DEFAULT 0
 );
 
 -- One row per *observed price change*. Deliberately no UNIQUE(ref,
@@ -80,6 +82,11 @@ CREATE TABLE IF NOT EXISTS crawl_runs (
     notes         TEXT
 );
 
+"""
+
+# Indexes are created *after* migration, since an older database may not yet
+# have the columns they reference.
+SCHEMA_INDEXES = """
 CREATE INDEX IF NOT EXISTS idx_props_town     ON properties(town);
 CREATE INDEX IF NOT EXISTS idx_props_district ON properties(district);
 CREATE INDEX IF NOT EXISTS idx_props_active   ON properties(is_active);
@@ -118,7 +125,50 @@ class Database:
         self.conn.execute("PRAGMA foreign_keys = ON")
         self.conn.execute("PRAGMA journal_mode = WAL")
         self.conn.executescript(SCHEMA)
+        self._migrate()
+        self.conn.executescript(SCHEMA_INDEXES)
         self.conn.commit()
+
+    # All columns the current code expects, with their DDL. Used to bring an
+    # older database file up to date.
+    EXPECTED_COLUMNS: tuple[tuple[str, str], ...] = (
+        ("title", "TEXT"),
+        ("property_type", "TEXT"),
+        ("listing_category", "TEXT"),
+        ("price_usd", "INTEGER"),
+        ("area_m2", "REAL"),
+        ("bedrooms", "REAL"),
+        ("bathrooms", "REAL"),
+        ("town", "TEXT"),
+        ("district", "TEXT"),
+        ("governorate", "TEXT"),
+        ("location_raw", "TEXT"),
+        ("description", "TEXT"),
+        ("description_truncated", "INTEGER DEFAULT 0"),
+        ("photo_count", "INTEGER"),
+        ("image_urls", "TEXT"),
+        ("price_per_m2", "REAL"),
+        ("first_price_usd", "INTEGER"),
+        ("price_changes", "INTEGER DEFAULT 0"),
+        ("is_active", "INTEGER DEFAULT 1"),
+        ("delisted_at", "TEXT"),
+        ("detail_fetched_at", "TEXT"),
+        ("missed_crawls", "INTEGER DEFAULT 0"),
+    )
+
+    def _migrate(self) -> None:
+        """Add columns introduced after a database file was first created.
+
+        CREATE TABLE IF NOT EXISTS silently skips schema changes on an existing
+        file, so new columns have to be added explicitly.
+        """
+        have = {
+            row["name"]
+            for row in self.conn.execute("PRAGMA table_info(properties)").fetchall()
+        }
+        for column, ddl in self.EXPECTED_COLUMNS:
+            if column not in have:
+                self.conn.execute(f"ALTER TABLE properties ADD COLUMN {column} {ddl}")
 
     def close(self) -> None:
         self.conn.close()
@@ -223,6 +273,7 @@ class Database:
         updates["last_seen"] = now
         updates["is_active"] = 1
         updates["delisted_at"] = None
+        updates["missed_crawls"] = 0
         if from_detail:
             updates["detail_fetched_at"] = now
         if outcome in ("price_cut", "price_rise"):
@@ -250,27 +301,56 @@ class Database:
             (ref, observed_at, price),
         )
 
-    def mark_delisted(self, seen_refs: Iterable[str], category: str | None) -> int:
-        """Flag active listings in a category that this crawl did not see.
+    def mark_delisted(
+        self,
+        seen_refs: Iterable[str],
+        category: str | None,
+        threshold: int = 2,
+    ) -> int:
+        """Retire active listings a complete crawl failed to see.
 
         Only call this after a *complete* crawl of that category -- a partial
         crawl would wrongly retire everything it did not reach.
+
+        A listing is retired only after `threshold` consecutive complete crawls
+        have missed it. A full sweep takes minutes, and listings added while it
+        runs shift everything else across page boundaries, so a single miss is
+        a paging artefact far more often than it is a sale. Returns the number
+        of listings actually retired, not merely missed.
         """
         seen = set(seen_refs)
         rows = self.conn.execute(
-            "SELECT ref FROM properties WHERE is_active = 1"
+            "SELECT ref, missed_crawls FROM properties WHERE is_active = 1"
             + (" AND listing_category = ?" if category else ""),
             (category,) if category else (),
         ).fetchall()
-        gone = [r["ref"] for r in rows if r["ref"] not in seen]
-        if gone:
-            now = utcnow()
+
+        missed = [r for r in rows if r["ref"] not in seen]
+        if not missed:
+            return 0
+
+        now = utcnow()
+        retire: list[tuple[str, str]] = []
+        bump: list[tuple[str]] = []
+        for row in missed:
+            if (row["missed_crawls"] or 0) + 1 >= max(1, threshold):
+                retire.append((now, row["ref"]))
+            else:
+                bump.append((row["ref"],))
+
+        if bump:
             self.conn.executemany(
-                "UPDATE properties SET is_active = 0, delisted_at = ? WHERE ref = ?",
-                [(now, ref) for ref in gone],
+                "UPDATE properties SET missed_crawls = missed_crawls + 1 WHERE ref = ?",
+                bump,
             )
-            self.conn.commit()
-        return len(gone)
+        if retire:
+            self.conn.executemany(
+                "UPDATE properties SET is_active = 0, delisted_at = ?, "
+                "missed_crawls = missed_crawls + 1 WHERE ref = ?",
+                retire,
+            )
+        self.conn.commit()
+        return len(retire)
 
     # ------------------------------------------------------------- accessors
 

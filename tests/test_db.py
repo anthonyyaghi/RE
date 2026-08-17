@@ -98,13 +98,64 @@ def test_missing_listing_is_marked_delisted(db):
     db.upsert(listing("L1"), category="for-sale")
     db.upsert(listing("L2"), category="for-sale")
 
-    gone = db.mark_delisted({"L1"}, category="for-sale")
+    gone = db.mark_delisted({"L1"}, category="for-sale", threshold=1)
 
     assert gone == 1
     stats = db.stats()
     assert stats["active"] == 1 and stats["delisted"] == 1
     row = db.conn.execute("SELECT * FROM properties WHERE ref='L2'").fetchone()
     assert row["is_active"] == 0 and row["delisted_at"] is not None
+
+
+def test_single_miss_does_not_delist_by_default(db):
+    """Paging drift during a long crawl must not read as a sale."""
+    db.upsert(listing("L1"), category="for-sale")
+    db.upsert(listing("L2"), category="for-sale")
+
+    assert db.mark_delisted({"L1"}, category="for-sale") == 0
+    assert db.stats()["active"] == 2
+
+    row = db.conn.execute("SELECT missed_crawls FROM properties WHERE ref='L2'").fetchone()
+    assert row["missed_crawls"] == 1
+
+    # Missed a second consecutive time -> now it is retired.
+    assert db.mark_delisted({"L1"}, category="for-sale") == 1
+    assert db.stats()["delisted"] == 1
+
+
+def test_being_seen_again_resets_the_miss_counter(db):
+    db.upsert(listing("L1"), category="for-sale")
+    db.upsert(listing("L2"), category="for-sale")
+
+    db.mark_delisted({"L1"}, category="for-sale")          # L2 missed once
+    db.upsert(listing("L2"), category="for-sale")          # reappears
+    row = db.conn.execute("SELECT missed_crawls FROM properties WHERE ref='L2'").fetchone()
+    assert row["missed_crawls"] == 0
+
+    # So the next single miss must not retire it either.
+    assert db.mark_delisted({"L1"}, category="for-sale") == 0
+    assert db.stats()["active"] == 2
+
+
+def test_migration_adds_missing_columns(tmp_path):
+    """An older database file gains new columns on open."""
+    import sqlite3
+
+    path = tmp_path / "old.db"
+    legacy = sqlite3.connect(path)
+    legacy.execute(
+        "CREATE TABLE properties (ref TEXT PRIMARY KEY, url TEXT NOT NULL, "
+        "first_seen TEXT NOT NULL, last_seen TEXT NOT NULL)"
+    )
+    legacy.commit()
+    legacy.close()
+
+    with Database(path) as database:
+        columns = {
+            row["name"]
+            for row in database.conn.execute("PRAGMA table_info(properties)").fetchall()
+        }
+        assert "missed_crawls" in columns
 
 
 def test_delisting_is_scoped_to_its_category(db):
@@ -119,7 +170,7 @@ def test_delisting_is_scoped_to_its_category(db):
 
 def test_relisting_reactivates_and_clears_delisted_at(db):
     db.upsert(listing("L1"), category="for-sale")
-    db.mark_delisted(set(), category="for-sale")
+    db.mark_delisted(set(), category="for-sale", threshold=1)
     assert db.stats()["delisted"] == 1
 
     db.upsert(listing("L1"), category="for-sale")

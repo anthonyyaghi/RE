@@ -101,6 +101,9 @@ def main(argv: list[str] | None = None) -> int:
             result = crawl_index(
                 db, _client(config), category,
                 max_pages=args.max_pages, start_page=args.start_page,
+                delist_after_missed_crawls=int(
+                    config.get("scrape", {}).get("delist_after_missed_crawls", 2)
+                ),
             )
             print(result.summary())
             if not result.complete:

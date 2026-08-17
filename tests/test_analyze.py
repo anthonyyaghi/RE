@@ -327,10 +327,6 @@ def test_scope_is_local_enough():
 
 def test_borrowed_benchmark_is_flagged_and_screened_out():
     """A cheap town valued against another town's stock must not rank."""
-    # Finished comps exist only in an expensive town, same governorate.
-    expensive = finished_rows(town="Achrafieh", ppm2=3300, n=10)
-    for row in expensive:
-        pass
     subject = make_row(
         ref="CHEAP",
         town="Basta",

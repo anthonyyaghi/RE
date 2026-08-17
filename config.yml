@@ -23,6 +23,12 @@ scrape:
   #          building-for-sale
   category: apartment-for-sale
 
+  # A listing must be missed by this many consecutive *complete* crawls before
+  # it is treated as delisted. A full sweep takes minutes, and listings added
+  # while it runs push others across page boundaries, so a single miss is a
+  # paging artefact more often than a sale. Set to 1 to retire on first miss.
+  delist_after_missed_crawls: 2
+
 analysis:
   # Restrict comps and candidates to these site categories. Null = all types.
   # The site labels most residential stock 'Apartment' even when the title

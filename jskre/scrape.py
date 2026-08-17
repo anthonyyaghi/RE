@@ -67,6 +67,7 @@ def crawl_index(
     category: str = "for-sale",
     max_pages: int | None = None,
     start_page: int = 1,
+    delist_after_missed_crawls: int = 2,
 ) -> CrawlResult:
     """Walk index pages for a category, upserting every card found."""
     if category not in CATEGORIES:
@@ -149,7 +150,9 @@ def crawl_index(
         # Only retire unseen listings after a full sweep from page 1.
         result.complete = start_page == 1 and max_pages is None
         if result.complete:
-            result.delisted = db.mark_delisted(result.seen_refs, category)
+            result.delisted = db.mark_delisted(
+                result.seen_refs, category, threshold=delist_after_missed_crawls
+            )
 
         db.finish_run(
             run_id,

@@ -20,7 +20,6 @@ import html
 import json
 import re
 from dataclasses import dataclass, field, asdict
-from typing import Iterator
 
 # --------------------------------------------------------------------- regex
 
