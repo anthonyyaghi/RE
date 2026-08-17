@@ -574,22 +574,40 @@ class ApiHandler(BaseHTTPRequestHandler):
         payload["price_history"] = history
         payload["features"] = feature_summary(extract(row["title"], row["description"]))
 
-        # Deal maths for this one listing, plus the comps behind it.
+        # Deal maths for this one listing, plus the exact comparables the
+        # resale benchmark was computed from.
         deal = None
+        comps_used: list[dict] = []
         if row["price_usd"] and row["area_m2"]:
+            from .features import effective_indoor_m2
+
             comps = CompsIndex(market_rows, a)
             deals = rank_deals([row], a, comps=comps, apply_screens=False)
             deal = deals[0].as_dict() if deals else None
+            if deal:
+                # Mirror analyse_listing's subject exactly: same features,
+                # same effective indoor area, so the pool shown IS the pool
+                # priced.
+                feats = extract(row["title"], row["description"])
+                eff_area = effective_indoor_m2(row["area_m2"], feats) or row["area_m2"]
+                comps_used = comps.comp_details(
+                    row["town"], row["district"], row["governorate"],
+                    eff_area, row["property_type"], subject_features=feats,
+                )
         payload["deal"] = deal
+        payload["comps_used"] = comps_used
 
-        # Nearby comparable listings, for eyeballing the benchmark.
-        peers = [
-            _row_to_listing(r)
-            for r in market_rows
-            if r["town"] == row["town"] and r["ref"] != row["ref"]
-        ]
-        peers.sort(key=lambda p: p["price_per_m2"] or 0)
-        payload["peers"] = peers[:60]
+        # Only fall back to same-town peers when there is no benchmark to show.
+        if not comps_used:
+            peers = [
+                _row_to_listing(r)
+                for r in market_rows
+                if r["town"] == row["town"] and r["ref"] != row["ref"]
+            ]
+            peers.sort(key=lambda p: p["price_per_m2"] or 0)
+            payload["peers"] = peers[:60]
+        else:
+            payload["peers"] = []
         self._json(payload)
 
     # ---------------------------------------------------- api: market/changes

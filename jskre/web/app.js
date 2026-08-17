@@ -756,9 +756,20 @@ function drawerContent(d) {
         : null);
   }
 
-  if (d.peers && d.peers.length) {
+  if (d.comps_used && d.comps_used.length && deal) {
+    const pctLabel = Math.round((state.assumptions.exit_percentile ?? 0.6) * 100);
+    parts.push(
+      el('h2', { class: 'section' },
+        `Comparables behind the resale price (${d.comps_used.length})`),
+      el('p', { class: 'footnote' },
+        `Finished listings at ${deal.benchmark_scope} level “${deal.benchmark_key}” `
+        + `(size-filtered when enough remain). “Adj $/m²” moves each comp toward this listing's `
+        + `feature profile; the resale rate (${num(deal.resale_ppm2)} $/m²) is the ${pctLabel}th `
+        + `percentile of that column.`),
+      compTable(d.comps_used, deal));
+  } else if (d.peers && d.peers.length) {
     parts.push(el('h2', { class: 'section' }, `Other listings in ${d.town || 'this town'} (${d.peers.length})`),
-      el('p', { class: 'footnote' }, 'Sorted cheapest first by $/m², so you can eyeball whether the benchmark is fair.'),
+      el('p', { class: 'footnote' }, 'No resale benchmark for this listing (missing price or area) — showing same-town listings instead.'),
       peerTable(d.peers));
   }
 
@@ -769,6 +780,31 @@ const conditionChip = (label) => el('span', {
   class: 'chip ' + (label === 'renovation_target' ? 'reno'
     : label === 'finished' ? 'finished' : ''),
 }, label.replace(/_/g, ' '));
+
+function compTable(comps, deal) {
+  const row = (c) => {
+    const isSelf = c.ref === deal.ref;
+    const tr = el('tr', { onclick: () => { if (!isSelf) openDrawer(c.ref); } },
+      el('td', {}, c.ref, isSelf ? el('span', { class: 'chip', style: 'margin-left:.3rem' }, 'this listing') : null),
+      el('td', { class: 'wrap', style: 'max-width:260px' }, c.title || '—'),
+      el('td', { class: 'num' }, num(c.area_m2)),
+      el('td', { class: 'num' }, money(c.price_usd)),
+      el('td', { class: 'num' }, num(c.ppm2)),
+      el('td', { class: 'num' },
+        num(c.adjusted_ppm2),
+        c.adjusted_ppm2 !== c.ppm2
+          ? el('span', { class: 'muted' }, ` (${c.adjusted_ppm2 > c.ppm2 ? '+' : ''}${((c.adjusted_ppm2 / c.ppm2 - 1) * 100).toFixed(0)}%)`)
+          : null),
+      el('td', { class: 'num ' + (c.adjusted_ppm2 <= deal.resale_ppm2 ? 'muted' : '') },
+        c.adjusted_ppm2 <= deal.resale_ppm2 ? 'below' : 'above'));
+    return tr;
+  };
+  const table = dataTable(
+    ['Ref', 'Comparable', 'm²#', 'Asking#', '$/m²#', 'Adj $/m²#', 'vs resale#'],
+    comps.map(row));
+  table.style.cssText = 'margin-top:.4rem; max-height:360px; overflow-y:auto';
+  return table;
+}
 
 function peerTable(peers) {
   const row = (p) => el('tr', { onclick: () => openDrawer(p.ref) },

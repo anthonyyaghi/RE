@@ -222,6 +222,9 @@ class CompsIndex:
             if condition.is_finished:
                 self.finished.append(
                     {
+                        "ref": row["ref"],
+                        "title": row["title"],
+                        "price_usd": row["price_usd"],
                         "ppm2": ppm2,
                         "area_m2": row["area_m2"],
                         "town": row["town"],
@@ -271,7 +274,22 @@ class CompsIndex:
         if cache_key in self._cache:
             return self._cache[cache_key]
 
-        result: Benchmark | None = None
+        chosen = self._select_pool(town, district, governorate, area_m2, property_type)
+        result = self._build(*chosen, svec) if chosen else None
+
+        self._cache[cache_key] = result
+        return result
+
+    def _select_pool(
+        self,
+        town: str | None,
+        district: str | None,
+        governorate: str | None,
+        area_m2: float | None,
+        property_type: str | None,
+    ) -> tuple[str, str, list[dict]] | None:
+        """The comp pool the benchmark is built from: (scope, key, comps)."""
+        chosen: tuple[str, str, list[dict]] | None = None
         for scope, key in (
             ("town", town),
             ("district", district),
@@ -289,16 +307,49 @@ class CompsIndex:
             if len(sized) >= self.a.min_comps:
                 pool = sized
             if pool:
-                candidate = self._build(scope, key, pool, svec)
-                result = candidate
-                if candidate.n_comps >= self.a.min_comps:
+                chosen = (scope, key, pool)
+                if len(pool) >= self.a.min_comps:
                     break
 
-        if result is None and self.finished:
-            result = self._build("global", "all", self.finished, svec)
+        if chosen is None and self.finished:
+            chosen = ("global", "all", self.finished)
+        return chosen
 
-        self._cache[cache_key] = result
-        return result
+    def comp_details(
+        self,
+        town: str | None,
+        district: str | None,
+        governorate: str | None,
+        area_m2: float | None,
+        property_type: str | None,
+        subject_features: PropertyFeatures | None = None,
+    ) -> list[dict]:
+        """The individual comparables behind a benchmark, for display.
+
+        Returns exactly the pool `benchmark_for` would use for the same
+        subject, with both the raw asking $/m² and the feature-adjusted value
+        the exit percentile is actually taken over -- so a user can audit the
+        resale price comp by comp.
+        """
+        chosen = self._select_pool(town, district, governorate, area_m2, property_type)
+        if chosen is None:
+            return []
+        svec = feature_vector(subject_features) if subject_features else None
+        _, _, pool = chosen
+        details = [
+            {
+                "ref": c["ref"],
+                "title": c["title"],
+                "price_usd": c["price_usd"],
+                "area_m2": c["area_m2"],
+                "town": c["town"],
+                "ppm2": round(c["ppm2"], 1),
+                "adjusted_ppm2": round(self._adjusted(c, svec), 1),
+            }
+            for c in pool
+        ]
+        details.sort(key=lambda d: d["adjusted_ppm2"])
+        return details
 
     def _adjusted(self, comp: dict, svec: list[float] | None) -> float:
         """A comp's $/m², moved toward the subject's feature profile."""

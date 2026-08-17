@@ -175,6 +175,31 @@ def test_adjustment_is_noop_when_data_too_thin():
     assert b.adjustment_pct == 0.0
 
 
+def test_comp_details_mirror_the_benchmark_pool():
+    """The comps shown to the user must be the comps the price came from."""
+    a = Assumptions()
+    rows = viewy_market()
+    comps = CompsIndex(rows, a)
+    from jskre.features import extract as ex
+    from jskre.analyze import percentile
+
+    subject = ex("plain flat", "")
+    benchmark = comps.benchmark_for("Jbeil", "Jbeil", "Mount Lebanon", 150.0,
+                                    "Apartment", subject_features=subject)
+    details = comps.comp_details("Jbeil", "Jbeil", "Mount Lebanon", 150.0,
+                                 "Apartment", subject_features=subject)
+
+    assert len(details) == benchmark.n_comps
+    # Sorted ascending by the adjusted value the percentile is taken over.
+    adjusted = [d["adjusted_ppm2"] for d in details]
+    assert adjusted == sorted(adjusted)
+    # And that column reproduces the benchmark's resale rate.
+    assert percentile(adjusted, a.exit_percentile) == pytest.approx(
+        benchmark.resale_ppm2, rel=1e-3)
+    # Every row is identifiable and priceable for display.
+    assert all(d["ref"] and d["price_usd"] and d["area_m2"] for d in details)
+
+
 # ------------------------------------------------------ new-build screening
 
 

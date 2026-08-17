@@ -229,12 +229,17 @@ def test_listings_pagination_and_search(live_server):
     assert [l["ref"] for l in found["listings"]] == ["T1"]
 
 
-def test_listing_detail_includes_deal_and_peers(live_server):
+def test_listing_detail_includes_deal_and_comps_used(live_server):
     data = get(live_server, "/api/listings/T1")
     assert data["ref"] == "T1"
     assert data["deal"]["condition_label"] == "renovation_target"
-    assert data["peers"]
-    assert all(p["ref"] != "T1" for p in data["peers"])
+    # The drawer shows the actual comp pool, not town peers.
+    assert len(data["comps_used"]) == data["deal"]["n_comps"]
+    assert data["peers"] == []
+    adjusted = [c["adjusted_ppm2"] for c in data["comps_used"]]
+    assert adjusted == sorted(adjusted)
+    # T1 needs work, so it must never appear in its own finished-comp pool.
+    assert all(c["ref"] != "T1" for c in data["comps_used"])
 
 
 def test_unknown_listing_is_404(live_server):
