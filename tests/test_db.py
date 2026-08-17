@@ -228,6 +228,26 @@ def test_repair_is_idempotent(db):
     assert db.repair_descriptions()["cleaned"] == 0
 
 
+def test_bookmark_toggle_and_note_semantics(db):
+    db.upsert(listing("L1"))
+    db.set_bookmark("L1", True, "call the agent")
+    assert db.bookmark_map()["L1"]["note"] == "call the agent"
+
+    # Re-saving without a note preserves the existing note.
+    db.set_bookmark("L1", True)
+    assert db.bookmark_map()["L1"]["note"] == "call the agent"
+
+    # An explicit string (even empty) replaces it.
+    db.set_bookmark("L1", True, "")
+    assert db.bookmark_map()["L1"]["note"] == ""
+
+    # Removing the bookmark removes the note with it.
+    db.set_bookmark("L1", False)
+    assert db.bookmark_map() == {}
+    db.set_bookmark("L1", True)
+    assert db.bookmark_map()["L1"]["note"] is None
+
+
 def test_crawl_run_records_counters(db):
     run_id = db.start_run("for-sale")
     db.finish_run(run_id, status="ok", seen=42, new_listings=7, price_cuts=2)

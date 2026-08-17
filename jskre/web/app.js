@@ -12,6 +12,7 @@ const state = {
   assumptions: {},
   defaults: {},
   candidates: [],
+  bookmarks: new Set(),
   view: 'candidates',
   jobTimer: null,
 };
@@ -210,6 +211,7 @@ function assumptionQuery() {
   if ($('#f-max-price').value) params.set('max_price', $('#f-max-price').value);
   params.set('sort', $('#f-sort').value);
   params.set('screens', $('#f-screens').value);
+  if ($('#f-saved').value === 'saved') params.set('bookmarked', '1');
   params.set('limit', '300');
   return params;
 }
@@ -271,7 +273,8 @@ function candidateTable(rows) {
   const body = rows.map((c) => el('tr', { onclick: () => openDrawer(c.ref) },
     el('td', { class: 'wrap' },
       el('div', {}, c.title || c.ref),
-      el('div', { style: 'margin-top:.2rem; display:flex; gap:.25rem; flex-wrap:wrap' },
+      el('div', { style: 'margin-top:.2rem; display:flex; gap:.25rem; flex-wrap:wrap; align-items:center' },
+        starButton(c.ref),
         el('span', { class: 'chip' }, c.ref),
         conditionChip(c.condition_label),
         el('span', { class: 'chip' }, `reno: ${c.reno_depth}`))),
@@ -326,6 +329,7 @@ async function loadListings(page = 1) {
     town: $('#l-town').value,
     active: $('#l-active').value,
   });
+  if ($('#l-saved').value === 'saved') params.set('bookmarked', '1');
   for (const [id, key] of [['#l-min-price', 'min_price'], ['#l-max-price', 'max_price'],
     ['#l-min-area', 'min_area']]) {
     if ($(id).value) params.set(key, $(id).value);
@@ -340,7 +344,9 @@ async function loadListings(page = 1) {
     }
     const rows = data.listings.map((l) => el('tr', { onclick: () => openDrawer(l.ref) },
       el('td', { class: 'wrap' }, l.title || l.ref,
-        el('div', {}, el('span', { class: 'chip' }, l.ref),
+        el('div', { style: 'display:flex; gap:.25rem; align-items:center' },
+          starButton(l.ref),
+          el('span', { class: 'chip' }, l.ref),
           !l.is_active ? el('span', { class: 'chip low' }, 'delisted') : null)),
       el('td', {}, l.town || '—'),
       el('td', {}, l.property_type || '—'),
@@ -696,9 +702,10 @@ function drawerContent(d) {
         el('div', { class: 'muted', style: 'font-size:.8rem; margin-top:.2rem' },
           [d.location_raw || d.town, d.ref, d.property_type].filter(Boolean).join(' · '))),
       el('button', { class: 'close', onclick: closeDrawer, 'aria-label': 'Close' }, '✕')),
-    el('p', { style: 'margin:.5rem 0 1rem' },
+    el('p', { style: 'margin:.5rem 0 .6rem' },
       el('a', { href: `https://www.jskre.com${d.url}`, target: '_blank', rel: 'noopener' },
         'Open on jskre.com ↗')),
+    bookmarkControls(d),
     el('dl', { class: 'kv' },
       el('dt', {}, 'Asking'), el('dd', {}, money(d.price_usd)),
       el('dt', {}, 'Area'), el('dd', {}, `${num(d.area_m2)} m²`),
@@ -776,6 +783,43 @@ function drawerContent(d) {
   return parts.filter(Boolean);
 }
 
+/* ----------------------------------------------------------- bookmarks */
+
+async function setBookmark(ref, bookmarked, note) {
+  await api('/api/bookmarks', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ref, bookmarked, ...(note !== undefined ? { note } : {}) }),
+  });
+  if (bookmarked) state.bookmarks.add(ref);
+  else state.bookmarks.delete(ref);
+}
+
+/* A star that toggles in place — no table reload, so scroll position and
+ * the current filter view are preserved while curating. */
+function starButton(ref) {
+  const on = state.bookmarks.has(ref);
+  return el('button', {
+    class: 'star' + (on ? ' on' : ''),
+    title: on ? 'Remove from saved' : 'Save to shortlist',
+    'aria-label': `bookmark ${ref}`,
+    onclick: async (event) => {
+      event.stopPropagation();
+      const btn = event.currentTarget;
+      const next = !state.bookmarks.has(ref);
+      try {
+        await setBookmark(ref, next);
+      } catch (error) {
+        toast(error.message, true);
+        return;
+      }
+      btn.classList.toggle('on', next);
+      btn.textContent = next ? '★' : '☆';
+      btn.title = next ? 'Remove from saved' : 'Save to shortlist';
+    },
+  }, on ? '★' : '☆');
+}
+
 const conditionChip = (label) => el('span', {
   class: 'chip ' + (label === 'renovation_target' ? 'reno'
     : label === 'finished' ? 'finished' : ''),
@@ -816,6 +860,37 @@ function peerTable(peers) {
   const table = dataTable(['Ref', 'm²#', 'Price#', '$/m²#', 'Condition'], peers.map(row));
   table.style.cssText = 'margin-top:.4rem; max-height:320px; overflow-y:auto';
   return table;
+}
+
+function bookmarkControls(d) {
+  const wrap = el('div', { style: 'margin:0 0 1rem; display:flex; flex-direction:column; gap:.4rem; max-width:420px' });
+  const render = () => {
+    wrap.textContent = '';
+    const on = state.bookmarks.has(d.ref);
+    wrap.append(el('button', {
+      class: 'action' + (on ? '' : ' ghost'),
+      style: 'align-self:flex-start',
+      onclick: async () => {
+        try {
+          await setBookmark(d.ref, !on);
+        } catch (error) { toast(error.message, true); return; }
+        render();
+      },
+    }, on ? '★ Saved — click to remove' : '☆ Save property'));
+    if (on) {
+      wrap.append(el('textarea', {
+        rows: 2,
+        placeholder: 'Private note — saved on click-away ("call agent", "kitchen worse than photos", …)',
+        onchange: (event) => {
+          setBookmark(d.ref, true, event.target.value)
+            .then(() => toast('Note saved.'))
+            .catch((error) => toast(error.message, true));
+        },
+      }, d.bookmark_note || ''));
+    }
+  };
+  render();
+  return wrap;
 }
 
 /* Cost stack vs exit. Part-to-whole against a comparison total, so: horizontal
@@ -991,6 +1066,7 @@ async function saveAssumptions() {
 async function bootstrap({ keepAssumptions = false } = {}) {
   const boot = await api('/api/bootstrap');
   state.boot = boot;
+  state.bookmarks = new Set(boot.bookmarks || []);
   if (!keepAssumptions) {
     state.assumptions = { ...boot.assumptions };
     state.defaults = { ...boot.assumptions };
@@ -1029,7 +1105,7 @@ function wire() {
     if (saved) document.documentElement.setAttribute('data-theme', saved);
   } catch { /* ignore */ }
 
-  for (const id of ['#f-condition', '#f-town', '#f-sort', '#f-screens']) {
+  for (const id of ['#f-condition', '#f-town', '#f-sort', '#f-screens', '#f-saved']) {
     $(id).addEventListener('change', loadCandidates);
   }
   for (const id of ['#f-min-price', '#f-max-price']) {
@@ -1044,7 +1120,7 @@ function wire() {
   $('#export-candidates').addEventListener('click', exportCandidates);
 
   $('#l-q').addEventListener('input', scheduleListings);
-  for (const id of ['#l-town', '#l-active']) $(id).addEventListener('change', () => loadListings(1));
+  for (const id of ['#l-town', '#l-active', '#l-saved']) $(id).addEventListener('change', () => loadListings(1));
   for (const id of ['#l-min-price', '#l-max-price', '#l-min-area']) {
     $(id).addEventListener('input', scheduleListings);
   }

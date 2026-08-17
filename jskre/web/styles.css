@@ -184,6 +184,19 @@ fieldset.group legend { font-size: .74rem; text-transform: uppercase; letter-spa
 .control input[type="range"] { width: 100%; margin: .25rem 0 0; accent-color: var(--accent); }
 .control .desc { color: var(--text-muted); font-size: .72rem; margin-top: .1rem; }
 
+.star {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1.05rem;
+  line-height: 1;
+  padding: 0 .15rem;
+  color: var(--text-muted);
+}
+.star:hover { color: var(--series-4); }
+.star.on { color: var(--series-4); }
+
+textarea,
 select, input[type="text"], input[type="number"], input[type="search"] {
   background: var(--raised);
   color: var(--text-primary);
@@ -192,6 +205,8 @@ select, input[type="text"], input[type="number"], input[type="search"] {
   padding: .35rem .5rem;
   font: inherit;
 }
+textarea { resize: vertical; width: 100%; }
+
 .filters { display: flex; gap: .5rem; flex-wrap: wrap; align-items: flex-end; margin-bottom: .8rem; }
 .filters .field { display: flex; flex-direction: column; gap: .2rem; }
 .filters .field span { font-size: .74rem; color: var(--text-muted); }

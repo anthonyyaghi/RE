@@ -67,6 +67,15 @@ CREATE TABLE IF NOT EXISTS price_history (
     price_usd   INTEGER
 );
 
+-- User curation: a hand-picked shortlist. `note` is the user's own words --
+-- "call agent", "visited, kitchen worse than photos" -- and removing a
+-- bookmark deletes its note with it.
+CREATE TABLE IF NOT EXISTS bookmarks (
+    ref        TEXT PRIMARY KEY REFERENCES properties(ref),
+    note       TEXT,
+    created_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS crawl_runs (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     started_at    TEXT NOT NULL,
@@ -422,6 +431,31 @@ class Database:
             "examined": len(rows),
             "cleaned": len(updates),
             "now_truncated": sum(1 for u in updates if u[1]),
+        }
+
+    # ------------------------------------------------------------- bookmarks
+
+    def set_bookmark(self, ref: str, bookmarked: bool, note: str | None = None) -> None:
+        """Add/remove a listing from the saved shortlist.
+
+        Passing note=None on an existing bookmark preserves its note; passing
+        a string (including "") replaces it.
+        """
+        if bookmarked:
+            self.conn.execute(
+                "INSERT INTO bookmarks (ref, note, created_at) VALUES (?, ?, ?) "
+                "ON CONFLICT(ref) DO UPDATE SET "
+                "note = COALESCE(excluded.note, bookmarks.note)",
+                (ref, note, utcnow()),
+            )
+        else:
+            self.conn.execute("DELETE FROM bookmarks WHERE ref = ?", (ref,))
+        self.conn.commit()
+
+    def bookmark_map(self) -> dict[str, dict]:
+        return {
+            row["ref"]: dict(row)
+            for row in self.conn.execute("SELECT * FROM bookmarks").fetchall()
         }
 
     def stats(self) -> dict:

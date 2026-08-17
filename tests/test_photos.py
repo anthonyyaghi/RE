@@ -138,11 +138,12 @@ def test_export_writes_stable_snapshots(db, tmp_path):
     add_listing(db, "L1", URLS)
     photos.import_result(db, "L1", {"condition": "dated", "evidence": ["x"]}, "m", "b1")
 
+    db.set_bookmark("L1", True, "shortlisted")
     outdir = tmp_path / "exports"
     paths = export_all(db, outdir)
     names = {p.name for p in paths}
     assert names == {"listings.jsonl.gz", "price_history.jsonl.gz",
-                     "photo_assessments.jsonl.gz"}
+                     "photo_assessments.jsonl.gz", "bookmarks.jsonl.gz"}
 
     with gzip.open(outdir / "listings.jsonl.gz", "rt", encoding="utf-8") as fh:
         rows = [json.loads(line) for line in fh]
@@ -164,6 +165,7 @@ def test_restore_round_trips_a_fresh_clone(db, tmp_path):
     db.upsert(Listing(ref="L1", url="/properties/x-l1", price_usd=90_000,
                       area_m2=100.0, town="Jbeil"))  # a price cut -> history row
     photos.import_result(db, "L1", {"condition": "dated", "evidence": ["x"]}, "m", "b1")
+    db.set_bookmark("L2", True, "curated")
     outdir = tmp_path / "exports"
     export_all(db, outdir)
 
@@ -172,6 +174,8 @@ def test_restore_round_trips_a_fresh_clone(db, tmp_path):
         assert counts["properties"] == 2
         assert counts["price_history"] == 3   # two initial prices + one cut
         assert counts["photo_assessments"] == 1
+        assert counts["bookmarks"] == 1
+        assert fresh.bookmark_map()["L2"]["note"] == "curated"
 
         row = fresh.conn.execute(
             "SELECT price_usd, first_price_usd FROM properties WHERE ref='L1'"

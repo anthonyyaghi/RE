@@ -37,6 +37,12 @@ with the cost breakdown, the comps behind the benchmark, price history, and the
 other listings in the same town sorted by $/m² so you can judge the benchmark
 yourself.
 
+Any property can be **saved to a shortlist** (star it in a table, or the Save
+button in the drawer, with a private note) and every view has a "Saved only"
+filter — so you can sweep the candidates, star what deserves a second look, and
+then work the curated list. Bookmarks live in the database and survive via
+`export`/`restore`.
+
 **Listings** browses everything collected, delisted stock included.
 **Market** ranks towns by the P25–P75 spread — where tired and finished stock
 trade furthest apart. **Changes** shows price cuts and delistings.

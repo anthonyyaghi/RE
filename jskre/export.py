@@ -59,6 +59,7 @@ def restore_all(db: Database, outdir: str | Path = "exports") -> dict[str, int]:
         ("properties", "listings.jsonl.gz"),
         ("price_history", "price_history.jsonl.gz"),
         ("photo_assessments", "photo_assessments.jsonl.gz"),
+        ("bookmarks", "bookmarks.jsonl.gz"),
     ):
         path = outdir / filename
         if not path.exists():
@@ -99,9 +100,13 @@ def export_all(db: Database, outdir: str | Path = "exports") -> list[Path]:
             "SELECT name FROM sqlite_master WHERE type='table'"
         )
     }
-    if "photo_assessments" in tables:
-        written.append(_dump_jsonl_gz(
-            db.conn.execute("SELECT * FROM photo_assessments ORDER BY ref"),
-            outdir / "photo_assessments.jsonl.gz",
-        ))
+    for table, filename in (
+        ("photo_assessments", "photo_assessments.jsonl.gz"),
+        ("bookmarks", "bookmarks.jsonl.gz"),
+    ):
+        if table in tables:
+            written.append(_dump_jsonl_gz(
+                db.conn.execute(f"SELECT * FROM {table} ORDER BY ref"),
+                outdir / filename,
+            ))
     return written

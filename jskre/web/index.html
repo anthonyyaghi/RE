@@ -82,6 +82,12 @@
               <option value="0">Off — show everything</option>
             </select>
           </div>
+          <div class="field"><span>Saved</span>
+            <select id="f-saved">
+              <option value="">All</option>
+              <option value="saved">★ Saved only</option>
+            </select>
+          </div>
           <button class="action ghost" id="export-candidates">Export CSV</button>
         </div>
         <div id="candidates-body"><p class="loading">Analysing…</p></div>
@@ -109,6 +115,12 @@
         <select id="l-active">
           <option value="1">Active only</option>
           <option value="0">Include delisted</option>
+        </select>
+      </div>
+      <div class="field"><span>Saved</span>
+        <select id="l-saved">
+          <option value="">Any</option>
+          <option value="saved">★ Saved only</option>
         </select>
       </div>
     </div>

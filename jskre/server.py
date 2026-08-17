@@ -352,6 +352,8 @@ class ApiHandler(BaseHTTPRequestHandler):
         body = self._read_json_body()
         if path == "/api/assumptions":
             return self._api_save_assumptions(body)
+        if path == "/api/bookmarks":
+            return self._api_set_bookmark(body)
         if path == "/api/jobs":
             return self._api_start_job(body)
         if path.endswith("/stop") and path.startswith("/api/jobs/"):
@@ -391,6 +393,7 @@ class ApiHandler(BaseHTTPRequestHandler):
                     "WHERE property_type IS NOT NULL ORDER BY property_type"
                 ).fetchall()
             ]
+            bookmarks = set(db.bookmark_map())
 
         a = self._assumptions()
         self._json(
@@ -405,6 +408,7 @@ class ApiHandler(BaseHTTPRequestHandler):
                 },
                 "analysis_property_types": self._types(),
                 "jobs": self.runner.list_jobs(),
+                "bookmarks": sorted(bookmarks),
                 "config_path": str(self.config_path),
                 "db_path": str(self.db_path),
             }
@@ -422,11 +426,14 @@ class ApiHandler(BaseHTTPRequestHandler):
 
         with Database(self.db_path) as db:
             rows = db.active_listings(self._types())
+            bookmark_set = set(db.bookmark_map())
 
         # Comps are always built from the whole market, then candidates are
         # filtered -- narrowing first would starve the benchmark of comparables.
         comps = CompsIndex(rows, a)
         subject_rows = rows
+        if query.get("bookmarked", ["0"])[0] == "1":
+            subject_rows = [r for r in subject_rows if r["ref"] in bookmark_set]
         if town:
             needle = town.casefold()
             subject_rows = [r for r in rows if (r["town"] or "").casefold() == needle]
@@ -473,7 +480,10 @@ class ApiHandler(BaseHTTPRequestHandler):
                 "breakdown": breakdown,
                 "analysed": len(subject_rows),
                 "market_size": len(rows),
-                "candidates": [d.as_dict() for d in deals[:limit]],
+                "candidates": [
+                    {**d.as_dict(), "bookmarked": d.ref in bookmark_set}
+                    for d in deals[:limit]
+                ],
                 "assumptions": {
                     f.name: getattr(a, f.name) for f in dataclass_fields(Assumptions)
                 },
@@ -488,6 +498,8 @@ class ApiHandler(BaseHTTPRequestHandler):
 
         if query.get("active", ["1"])[0] == "1":
             where.append("is_active = 1")
+        if query.get("bookmarked", ["0"])[0] == "1":
+            where.append("ref IN (SELECT ref FROM bookmarks)")
         text = (query.get("q", [""])[0] or "").strip()
         if text:
             where.append(
@@ -539,6 +551,7 @@ class ApiHandler(BaseHTTPRequestHandler):
                 f"LIMIT ? OFFSET ?",
                 params + [per_page, offset],
             ).fetchall()
+            bookmark_set = set(db.bookmark_map())
 
         self._json(
             {
@@ -546,7 +559,10 @@ class ApiHandler(BaseHTTPRequestHandler):
                 "page": page,
                 "per_page": per_page,
                 "pages": max(1, (total + per_page - 1) // per_page),
-                "listings": [_row_to_listing(row) for row in rows],
+                "listings": [
+                    {**_row_to_listing(row), "bookmarked": row["ref"] in bookmark_set}
+                    for row in rows
+                ],
             }
         )
 
@@ -561,6 +577,7 @@ class ApiHandler(BaseHTTPRequestHandler):
 
             history = [dict(h) for h in db.price_history(row["ref"])]
             market_rows = db.active_listings(self._types())
+            bookmark = db.bookmark_map().get(row["ref"])
 
         payload = _row_to_listing(row)
         payload["description"] = row["description"]
@@ -573,6 +590,8 @@ class ApiHandler(BaseHTTPRequestHandler):
             payload["image_urls"] = []
         payload["price_history"] = history
         payload["features"] = feature_summary(extract(row["title"], row["description"]))
+        payload["bookmarked"] = bookmark is not None
+        payload["bookmark_note"] = (bookmark or {}).get("note")
 
         # Deal maths for this one listing, plus the exact comparables the
         # resale benchmark was computed from.
@@ -713,6 +732,21 @@ class ApiHandler(BaseHTTPRequestHandler):
         if self.runner is not None:
             self.runner.config = ApiHandler.config
         self._json({"saved": True, "assumptions": merged, "path": str(path)})
+
+    def _api_set_bookmark(self, body: dict) -> None:
+        ref = str(body.get("ref") or "").upper()
+        bookmarked = bool(body.get("bookmarked"))
+        note = body.get("note")
+        if note is not None and not isinstance(note, str):
+            return self._error(400, "note must be a string.")
+        with Database(self.db_path) as db:
+            exists = db.conn.execute(
+                "SELECT 1 FROM properties WHERE ref = ?", (ref,)
+            ).fetchone()
+            if not exists:
+                return self._error(404, f"No listing with reference {ref!r}")
+            db.set_bookmark(ref, bookmarked, note)
+        self._json({"ref": ref, "bookmarked": bookmarked})
 
     def _api_start_job(self, body: dict) -> None:
         kind = body.get("kind")

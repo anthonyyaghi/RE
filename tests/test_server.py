@@ -297,6 +297,42 @@ def test_bad_job_kind_is_rejected(live_server):
     assert excinfo.value.code == 400
 
 
+def test_bookmark_roundtrip_and_filters(live_server):
+    post(live_server, "/api/bookmarks",
+         {"ref": "T1", "bookmarked": True, "note": "go visit"})
+
+    assert "T1" in get(live_server, "/api/bootstrap")["bookmarks"]
+
+    saved = get(live_server, "/api/candidates?screens=0&bookmarked=1")
+    assert [c["ref"] for c in saved["candidates"]] == ["T1"]
+    assert saved["candidates"][0]["bookmarked"] is True
+    # Comps still built from the whole market, not the shortlist.
+    assert saved["market_size"] == 10
+
+    listings = get(live_server, "/api/listings?bookmarked=1")
+    assert listings["total"] == 1
+    assert listings["listings"][0]["bookmarked"] is True
+
+    detail = get(live_server, "/api/listings/T1")
+    assert detail["bookmarked"] is True
+    assert detail["bookmark_note"] == "go visit"
+
+    post(live_server, "/api/bookmarks", {"ref": "T1", "bookmarked": False})
+    assert get(live_server, "/api/bootstrap")["bookmarks"] == []
+    assert get(live_server, "/api/listings?bookmarked=1")["total"] == 0
+
+
+def test_bookmarking_unknown_ref_is_404(live_server):
+    request = urllib.request.Request(
+        live_server + "/api/bookmarks",
+        data=json.dumps({"ref": "NOPE", "bookmarked": True}).encode(),
+        headers={"Content-Type": "application/json"}, method="POST",
+    )
+    with pytest.raises(urllib.error.HTTPError) as excinfo:
+        urllib.request.urlopen(request, timeout=10)
+    assert excinfo.value.code == 404
+
+
 def test_static_frontend_is_served(live_server):
     with urllib.request.urlopen(live_server + "/", timeout=10) as response:
         body = response.read().decode()
