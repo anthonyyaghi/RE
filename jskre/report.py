@@ -88,6 +88,22 @@ footer { margin-top:3rem; color:var(--muted); font-size:.8rem; }
 """
 
 
+def _thesis_split(deals: Sequence[DealAnalysis]) -> str:
+    """One sentence describing how the shortlist breaks down by condition."""
+    if not deals:
+        return "No candidates passed screening."
+    counts: dict[str, int] = {}
+    for deal in deals:
+        counts[deal.condition_label] = counts.get(deal.condition_label, 0) + 1
+    order = ("renovation_target", "neutral", "unknown", "finished")
+    parts = [
+        f"{counts[label]} {label.replace('_', ' ')}"
+        for label in order
+        if counts.get(label)
+    ]
+    return "Of these, " + ", ".join(parts) + "."
+
+
 def _money(value: float | int | None) -> str:
     if value is None:
         return "—"
@@ -184,6 +200,15 @@ all-in cost of buying, renovating and holding. These are <em>asking</em> prices 
 both sides, not transacted prices — so treat the output as a shortlist to go and
 verify, not a valuation. Check the confidence column and the flags before trusting
 any single row.</div>
+
+<div class="note"><strong>Two different theses are mixed in this table.</strong>
+{_thesis_split(deals)} A <em>renovation_target</em> is cheap because it needs work —
+that is the flip thesis, and renovation is what unlocks the value. A
+<em>finished</em> listing that still looks cheap against its comps is a different
+bet: buying under market. That gap is usually explained by something the data
+cannot see (floor, view, exact street, building age, common areas), so treat
+those rows with more suspicion. Use <code>analyze --condition
+renovation_target,neutral</code> to isolate the renovation thesis.</div>
 
 <h2>Candidates by expected profit</h2>
 <div class="scroll"><table>

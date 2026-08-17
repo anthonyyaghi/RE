@@ -403,6 +403,51 @@ def test_guardrails_can_be_relaxed_by_config():
     assert _passes_screens(deal, relaxed)
 
 
+def test_flag_and_screen_agree_at_the_uplift_boundary():
+    """A row flagged as implausible must never also pass screening.
+
+    The flag and the screen have to compare the same value: testing a raw
+    ratio against a rounded stored field let 2.5004 trip the flag, be forced
+    to low confidence, and still survive a `> 2.5` screen.
+    """
+    a = Assumptions()
+    # Sweep prices so at least one lands just above the boundary.
+    for price in range(58_000, 64_000, 137):
+        market = finished_rows(town="Jbeil", ppm2=1000, n=10, area=150.0)
+        subject = make_row(ref="EDGE", town="Jbeil", price_usd=price, area_m2=150.0)
+        comps = CompsIndex(market + [subject], a)
+        deal = analyse_listing(subject, comps, a)
+
+        flagged = "implausible uplift" in deal.flags
+        passes = _passes_screens(deal, a)
+        assert not (flagged and passes), (
+            f"price {price}: uplift {deal.resale_uplift_ratio} was flagged "
+            "but still passed screening"
+        )
+        if flagged:
+            assert deal.confidence == "low"
+
+
+def test_condition_filter_isolates_the_renovation_thesis():
+    market = finished_rows(town="Jbeil", ppm2=2000, n=10)
+    target = make_row(
+        ref="RENO",
+        town="Jbeil",
+        title="Apartment needs renovation",
+        description="old building, needs work",
+        price_usd=150_000,
+        area_m2=150.0,
+    )
+    a = Assumptions(min_profit_usd=-10**9, min_roi=-1)
+    rows = market + [target]
+
+    everything = rank_deals(rows, a)
+    assert any(d.condition_label == "finished" for d in everything)
+
+    reno_only = rank_deals(rows, a, conditions=["renovation_target"])
+    assert [d.ref for d in reno_only] == ["RENO"]
+
+
 def test_no_screens_shows_rejected_deals_anyway():
     market = finished_rows(town="Jbeil", ppm2=4000, n=10)
     subject = make_row(ref="X", town="Jbeil", price_usd=60_000, area_m2=150.0)

@@ -53,10 +53,19 @@ def build_parser() -> argparse.ArgumentParser:
         help="show every listing, ignoring profit/ROI minimums",
     )
     p_analyze.add_argument("--csv", default=None, help="also write a CSV here")
+    p_analyze.add_argument(
+        "--condition", default=None,
+        help="comma-separated condition labels to keep, e.g. "
+             "'renovation_target,neutral' for the renovation thesis only",
+    )
 
     p_report = sub.add_parser("report", help="write CSV + HTML report")
     p_report.add_argument("--outdir", default="out")
     p_report.add_argument("--top", type=int, default=100)
+    p_report.add_argument(
+        "--condition", default=None,
+        help="comma-separated condition labels to keep (see `analyze --condition`)",
+    )
 
     p_changes = sub.add_parser("changes", help="recent price cuts and delistings")
     p_changes.add_argument("--days", type=int, default=14)
@@ -136,7 +145,9 @@ def main(argv: list[str] | None = None) -> int:
                     print(f"No listings found in town {args.town!r}.")
                     return 1
             deals = rank_deals(
-                rows, assumptions, comps=comps, apply_screens=not args.no_screens
+                rows, assumptions, comps=comps,
+                apply_screens=not args.no_screens,
+                conditions=_conditions(args.condition),
             )
             _print_deals(deals, args.top)
             if args.csv:
@@ -150,7 +161,10 @@ def main(argv: list[str] | None = None) -> int:
                 print("No listings in the database yet — run `scrape` first.")
                 return 1
             comps = CompsIndex(rows, assumptions)
-            deals = rank_deals(rows, assumptions, comps=comps)
+            deals = rank_deals(
+                rows, assumptions, comps=comps,
+                conditions=_conditions(args.condition),
+            )
             market = market_summary(rows, assumptions)
             outdir = Path(args.outdir)
             deals_csv = write_deals_csv(deals, outdir / "flip_candidates.csv")
@@ -188,6 +202,12 @@ def main(argv: list[str] | None = None) -> int:
             return 0
 
     return 1
+
+
+def _conditions(raw: str | None) -> list[str] | None:
+    if not raw:
+        return None
+    return [part.strip() for part in raw.split(",") if part.strip()]
 
 
 def _print_deals(deals: list, top: int) -> None:

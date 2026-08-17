@@ -358,7 +358,10 @@ def analyse_listing(
     if asking_ppm2 > benchmark.resale_ppm2:
         flags.append("asking above modelled resale")
 
-    uplift = benchmark.resale_ppm2 / asking_ppm2 if asking_ppm2 else 0.0
+    # Round once, here, and use this single value for the flag, the confidence
+    # downgrade and the screen. Comparing a raw ratio against a rounded stored
+    # field lets a listing be flagged as implausible yet still pass screening.
+    uplift = round(benchmark.resale_ppm2 / asking_ppm2, 2) if asking_ppm2 else 0.0
     comps_are_local = scope_is_local_enough(benchmark.scope, a.max_benchmark_scope)
     if not comps_are_local:
         flags.append(
@@ -394,7 +397,7 @@ def analyse_listing(
         benchmark_key=benchmark.key,
         n_comps=benchmark.n_comps,
         market_median_ppm2=round(benchmark.median_ppm2, 1),
-        resale_uplift_ratio=round(uplift, 2),
+        resale_uplift_ratio=uplift,
         comps_are_local=comps_are_local,
         purchase_price=round(purchase_price),
         purchase_fees=round(purchase_fees),
@@ -453,8 +456,18 @@ def rank_deals(
     a: Assumptions,
     comps: CompsIndex | None = None,
     apply_screens: bool = True,
+    conditions: Sequence[str] | None = None,
 ) -> list[DealAnalysis]:
-    """Analyse every listing and return them ranked by expected profit."""
+    """Analyse every listing and return them ranked by expected profit.
+
+    `conditions` restricts the output to given condition labels. This matters
+    because the ranking mixes two different theses: a `renovation_target` that
+    is cheap because it needs work (add value by renovating), and a `finished`
+    listing that is cheap relative to its comps (buy under market). The second
+    is usually explained by something the data cannot see -- floor, view, exact
+    street, building age -- so filter to the first if you want the flip thesis
+    specifically.
+    """
     comps = comps or CompsIndex(rows, a)
     from datetime import datetime, timezone
 
@@ -476,6 +489,8 @@ def rank_deals(
 
         deal = analyse_listing(row, comps, a, days_tracked=days)
         if deal is None:
+            continue
+        if conditions and deal.condition_label not in conditions:
             continue
         if apply_screens and not _passes_screens(deal, a):
             continue
