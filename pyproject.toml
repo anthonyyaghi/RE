@@ -24,4 +24,10 @@ packages = ["jskre"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-filterwarnings = ["error"]
+filterwarnings = [
+    "error",
+    # urllib leaves its client sockets to the garbage collector, so the live
+    # server tests raise ResourceWarning from the test harness rather than from
+    # anything in jskre. Everything else stays an error.
+    "ignore::ResourceWarning",
+]

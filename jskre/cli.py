@@ -71,6 +71,16 @@ def build_parser() -> argparse.ArgumentParser:
     p_changes.add_argument("--days", type=int, default=14)
 
     sub.add_parser("status", help="database summary")
+    sub.add_parser(
+        "repair", help="re-clean stored descriptions in place (no refetching)"
+    )
+
+    p_serve = sub.add_parser("serve", help="run the web UI")
+    p_serve.add_argument("--host", default="127.0.0.1")
+    p_serve.add_argument("--port", type=int, default=8765)
+    p_serve.add_argument(
+        "--open", action="store_true", help="open a browser window"
+    )
 
     return parser
 
@@ -101,6 +111,18 @@ def main(argv: list[str] | None = None) -> int:
     db_path = args.db or config.get("database", {}).get("path", "data/jskre.db")
     assumptions = Assumptions.from_dict(config.get("assumptions"))
     types = config.get("analysis", {}).get("property_types") or None
+
+    if args.command == "serve":
+        from .server import serve
+
+        if args.open:
+            import threading
+            import webbrowser
+
+            url = f"http://{args.host}:{args.port}"
+            threading.Timer(0.7, lambda: webbrowser.open(url)).start()
+        serve(args.host, args.port, db_path, args.config)
+        return 0
 
     with Database(db_path) as db:
         if args.command == "scrape":
@@ -175,6 +197,15 @@ def main(argv: list[str] | None = None) -> int:
             )
             print(f"{len(deals)} candidates passed screening.")
             print(f"  {deals_csv}\n  {market_csv}\n  {html_path}")
+            return 0
+
+        if args.command == "repair":
+            counts = db.repair_descriptions()
+            print(
+                f"examined {counts['examined']:,} descriptions, "
+                f"cleaned {counts['cleaned']:,}, "
+                f"{counts['now_truncated']:,} now correctly flagged as truncated"
+            )
             return 0
 
         if args.command == "changes":

@@ -54,6 +54,38 @@ def test_split_location(raw, expected):
     assert parse.split_location(raw) == expected
 
 
+@pytest.mark.parametrize(
+    "raw,expected_text,expected_truncated",
+    [
+        # The site's card puts contact buttons right after the blurb.
+        ("Nice flat\n- 120 m²\nWhatsApp us\nCall us\n<a", "Nice flat\n- 120 m²", False),
+        # Truncation marker sits BEFORE the chrome, so it only shows up after
+        # the chrome is stripped.
+        ("It consists of 1 recepti......\nWhatsApp us\nCall us\n<a",
+         "It consists of 1 recepti...", True),
+        ("Complete text with no chrome.", "Complete text with no chrome.", False),
+        ("Read more", None, False),
+        ("", None, False),
+        (None, None, False),
+        # A residual tag fragment on the final line is dropped.
+        ("Good flat\n<a href=\"/x\"", "Good flat", False),
+    ],
+)
+def test_clean_blurb(raw, expected_text, expected_truncated):
+    text, truncated = parse.clean_blurb(raw)
+    assert text == expected_text
+    assert truncated is expected_truncated
+
+
+def test_card_descriptions_carry_no_card_chrome(index_html):
+    for listing in parse.parse_index_page(index_html):
+        assert listing.description
+        lowered = listing.description.lower()
+        assert "whatsapp us" not in lowered
+        assert "call us" not in lowered
+        assert "<a" not in lowered
+
+
 def test_js_string_decodes_escapes():
     assert parse._js_string(r'"line1\nline2 \"quoted\" a\/b"') == 'line1\nline2 "quoted" a/b'
 

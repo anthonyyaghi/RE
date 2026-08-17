@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
+from typing import Callable
 
 from .db import Database
 from .http import PoliteClient, RobotsDisallowed
@@ -50,7 +51,25 @@ class CrawlResult:
     updated: int = 0
     delisted: int = 0
     complete: bool = False
+    stopped: bool = False
+    last_page: int = 0
     seen_refs: set[str] = field(default_factory=set)
+
+    def snapshot(self) -> dict:
+        """Counters only -- safe to hand to a UI without copying seen_refs."""
+        return {
+            "category": self.category,
+            "pages_fetched": self.pages_fetched,
+            "last_page": self.last_page,
+            "seen": self.seen,
+            "new_listings": self.new_listings,
+            "price_cuts": self.price_cuts,
+            "price_rises": self.price_rises,
+            "updated": self.updated,
+            "delisted": self.delisted,
+            "complete": self.complete,
+            "stopped": self.stopped,
+        }
 
     def summary(self) -> str:
         return (
@@ -68,8 +87,15 @@ def crawl_index(
     max_pages: int | None = None,
     start_page: int = 1,
     delist_after_missed_crawls: int = 2,
+    progress: Callable[[dict], None] | None = None,
+    should_stop: Callable[[], bool] | None = None,
 ) -> CrawlResult:
-    """Walk index pages for a category, upserting every card found."""
+    """Walk index pages for a category, upserting every card found.
+
+    `progress` is called after each page with a snapshot dict, and `should_stop`
+    is polled between pages, so a caller (the web UI) can report live progress
+    and cancel a long crawl.
+    """
     if category not in CATEGORIES:
         raise ValueError(
             f"Unknown category {category!r}; choose from {sorted(CATEGORIES)}"
@@ -97,11 +123,17 @@ def crawl_index(
             last_page,
         )
 
+        result.last_page = last_page
         page = start_page
         html_text: str | None = first_html
         empty_streak = 0
 
         while page <= last_page:
+            if should_stop is not None and should_stop():
+                log.info("%s: stop requested at page %s", category, page)
+                result.stopped = True
+                break
+
             if html_text is None:
                 html_text = client.get(f"{path}?page={page}")
             if html_text is None:
@@ -146,9 +178,13 @@ def crawl_index(
 
             page += 1
             html_text = None
+            if progress is not None:
+                progress(result.snapshot())
 
-        # Only retire unseen listings after a full sweep from page 1.
-        result.complete = start_page == 1 and max_pages is None
+        # Only retire unseen listings after a full sweep that was not cut short.
+        result.complete = (
+            start_page == 1 and max_pages is None and not result.stopped
+        )
         if result.complete:
             result.delisted = db.mark_delisted(
                 result.seen_refs, category, threshold=delist_after_missed_crawls
@@ -156,7 +192,7 @@ def crawl_index(
 
         db.finish_run(
             run_id,
-            status="ok",
+            status="stopped" if result.stopped else "ok",
             pages_fetched=result.pages_fetched,
             seen=result.seen,
             new_listings=result.new_listings,
@@ -179,12 +215,19 @@ def crawl_details(
     client: PoliteClient,
     limit: int | None = None,
     refs: list[str] | None = None,
+    progress: Callable[[dict], None] | None = None,
+    should_stop: Callable[[], bool] | None = None,
 ) -> dict[str, int]:
     """Fetch detail pages to fill in full descriptions and photo URLs."""
     targets = refs if refs is not None else db.refs_needing_detail(limit)
-    counts = {"fetched": 0, "updated": 0, "missing": 0, "failed": 0}
+    counts = {"fetched": 0, "updated": 0, "missing": 0, "failed": 0, "total": len(targets)}
 
     for i, ref in enumerate(targets, start=1):
+        if should_stop is not None and should_stop():
+            log.info("detail pass: stop requested after %s", i - 1)
+            break
+        if progress is not None:
+            progress({**counts, "done": i - 1})
         url = db.url_for(ref)
         if not url:
             counts["missing"] += 1

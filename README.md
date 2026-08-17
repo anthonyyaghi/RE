@@ -15,14 +15,36 @@ finished stock in the same area asks that a renovation still leaves a profit?**
 ```bash
 pip install -r requirements.txt
 
-python -m jskre scrape                 # crawl listings into data/jskre.db
-python -m jskre details --limit 300    # optional: full descriptions
-python -m jskre report                 # writes out/report.html + CSVs
-open out/report.html
+python -m jskre scrape          # crawl listings into data/jskre.db (~9 min)
+python -m jskre serve --open    # the web UI on http://127.0.0.1:8765
 ```
 
-A full apartment crawl is ~254 pages at ~2s each, so budget about 9 minutes.
-Re-running `scrape` updates existing rows rather than duplicating them.
+Re-running `scrape` updates existing rows rather than duplicating them. If you
+prefer files to a browser, `python -m jskre report` still writes
+`out/report.html` plus the CSVs.
+
+## The web UI
+
+`python -m jskre serve` runs everything from one page. It binds to localhost and
+has no authentication, so don't expose it on a public interface.
+
+**Candidates** is the reason the UI exists. The rail on the left holds every
+assumption as a live control: drag the renovation rate or the exit percentile and
+the whole inventory re-ranks in under a tenth of a second, so you can see which
+conclusions survive your uncertainty and which were artefacts of one guess.
+Nothing is written to `config.yml` until you press Save. Each row opens a drawer
+with the cost breakdown, the comps behind the benchmark, price history, and the
+other listings in the same town sorted by $/m² so you can judge the benchmark
+yourself.
+
+**Listings** browses everything collected, delisted stock included.
+**Market** ranks towns by the P25–P75 spread — where tired and finished stock
+trade furthest apart. **Changes** shows price cuts and delistings.
+**Data** runs and monitors crawls, with live progress and a stop button.
+
+The frontend is plain HTML, CSS and JavaScript with no build step, served by
+Python's own `http.server`. Analysis is stateless — assumptions travel as query
+parameters — which is what makes the live controls work without session state.
 
 ---
 
@@ -96,12 +118,29 @@ benchmarks. Crawl the full inventory before trusting any ranking.
 
 | Command | What it does |
 |---|---|
+| `serve` | Run the web UI. `--host`, `--port`, `--open`. |
 | `scrape` | Crawl index pages. `--category`, `--max-pages`, `--start-page`. |
 | `details` | Fetch detail pages for untruncated descriptions and photo URLs. |
-| `analyze` | Rank candidates to the terminal. `--top`, `--town`, `--no-screens`, `--csv`. |
+| `analyze` | Rank candidates to the terminal. `--top`, `--town`, `--condition`, `--no-screens`, `--csv`. |
 | `report` | Write `flip_candidates.csv`, `market_by_town.csv`, `report.html`. |
 | `changes` | Price cuts and delistings in the last N days. |
 | `status` | Row counts and recent crawl history. |
+| `repair` | Re-clean stored descriptions in place, without refetching. |
+
+### Descriptions are the classifier's input, so their quality is the ceiling
+
+Index cards carry a *truncated* blurb — around 200 characters, cut mid-sentence.
+The full text averages more than double that. Since the condition classifier
+reads that text, a truncated description means it is judging a listing on the
+first fragment of its own sales pitch, and condition wording that appears later
+is invisible.
+
+Run `python -m jskre details` (or the Data tab's button) to replace card blurbs
+with full descriptions. It costs one request per listing, so a full backlog is
+slow — but on a sample of 80, descriptions went from 202 to 446 characters and 5%
+of listings reclassified, every one of them into `finished`, which is to say into
+the comp pool the resale benchmark is built from. Do it before you trust a
+ranking.
 
 ### Tracking change over time
 
@@ -209,11 +248,13 @@ If JSK offers a feed or API, prefer it. Ask.
 jskre/
   http.py        robots.txt enforcement, rate limiting, retries
   parse.py       index-card + detail-page parsers
-  db.py          SQLite schema, upserts, change history
+  db.py          SQLite schema, upserts, change history, migrations
   scrape.py      crawl orchestration (index pass, detail pass)
   condition.py   renovation-state classifier
   analyze.py     comps engine, margin model, guardrails
   report.py      CSV + HTML output
+  server.py      JSON API + background jobs for the web UI
+  web/           the frontend — no build step, no dependencies
   cli.py         command line interface
 tests/
   fixtures/      trimmed real pages — refresh these when the site changes

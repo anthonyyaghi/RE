@@ -48,7 +48,7 @@ def test_finished_stock_detected(text):
 def test_silent_listing_is_unknown():
     result = assess("Apartment for sale in Jbeil", "150 m2, 3 bedrooms, parking")
     assert result.label == "unknown"
-    assert result.signals == []
+    assert result.signals == ()
 
 
 def test_empty_input_is_unknown():

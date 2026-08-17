@@ -241,14 +241,15 @@ def parse_card(segment: str, url: str) -> Listing | None:
 
     title = _first_group(TITLE_H2_RE, segment) or _first_group(TITLE_P_RE, segment)
     location_raw = _location_from_address(segment)
-    description = _blurb_after_ref(lines)
+    raw_blurb = _blurb_after_ref(lines)
     if title is None or location_raw is None:
         # Fall back to positional text parsing for cards with a different
         # template (the site renders a few layout variants).
         alt_title, alt_location, alt_description = _card_text_fields(lines, ref_value)
         title = title or alt_title
         location_raw = location_raw or alt_location
-        description = description or alt_description
+        raw_blurb = raw_blurb or alt_description
+    description, truncated = clean_blurb(raw_blurb)
 
     return Listing(
         ref=ref_value,
@@ -261,7 +262,7 @@ def parse_card(segment: str, url: str) -> Listing | None:
         bathrooms=_float(baths.group(1)) if baths else None,
         location_raw=location_raw,
         description=description,
-        description_truncated=bool(description and description.endswith("...")),
+        description_truncated=truncated,
         photo_count=_int(photos.group(1)) if photos else None,
         **dict(
             zip(("town", "district", "governorate"), split_location(location_raw))
@@ -297,13 +298,56 @@ def _location_from_address(segment: str) -> str | None:
     return joined or None
 
 
+# Card markup puts the contact buttons immediately after the description, so
+# their labels land in the extracted text. Everything from the first of these
+# onwards is chrome, not listing content.
+CTA_MARKERS = (
+    "whatsapp us",
+    "call us",
+    "read more",
+    "view details",
+    "view property",
+    "enquire",
+)
+
+
+def clean_blurb(text: str | None) -> tuple[str | None, bool]:
+    """Strip card chrome from a description. Returns (text, was_truncated).
+
+    Truncation has to be judged *after* the trailing call-to-action labels are
+    removed: the site's ellipsis sits before them, so testing the raw string for
+    a trailing "..." always said False and left every truncated blurb looking
+    complete.
+    """
+    if not text:
+        return None, False
+
+    lines: list[str] = []
+    for raw in text.split("\n"):
+        line = raw.strip()
+        if line.lower() in CTA_MARKERS:
+            break
+        # A bare tag fragment left over from slicing mid-element.
+        if re.fullmatch(r"</?[a-zA-Z][^>]*>?", line):
+            break
+        lines.append(line)
+
+    body = "\n".join(lines).strip()
+    # Drop any residual fragment on the final line.
+    body = re.sub(r"<[a-zA-Z/][^>\n]*$", "", body).strip()
+    if not body:
+        return None, False
+
+    truncated = bool(re.search(r"\.{3,}\s*$", body))
+    body = re.sub(r"\.{3,}\s*$", "...", body)
+    return body, truncated
+
+
 def _blurb_after_ref(lines: list[str]) -> str | None:
     for i, line in enumerate(lines):
         if re.fullmatch(r"REF:\s*L\d+", line, re.I):
             blurb = "\n".join(ln for ln in lines[i + 1 :] if ln).strip()
-            if blurb:
-                return re.sub(r"\.{3,}$", "...", blurb)
-            return None
+            return blurb or None
     return None
 
 

@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JSK deal finder</title>
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+
+<header class="app">
+  <div>
+    <h1>JSK deal finder</h1>
+    <div class="sub" id="header-sub">loading…</div>
+  </div>
+  <nav class="tabs" role="tablist">
+    <button role="tab" data-view="candidates" aria-selected="true">Candidates</button>
+    <button role="tab" data-view="listings" aria-selected="false">Listings</button>
+    <button role="tab" data-view="market" aria-selected="false">Market</button>
+    <button role="tab" data-view="changes" aria-selected="false">Changes</button>
+    <button role="tab" data-view="data" aria-selected="false">Data</button>
+    <button class="ghost" id="theme-toggle" title="Toggle light/dark" aria-label="Toggle theme">◐</button>
+  </nav>
+</header>
+
+<main>
+
+<!-- ------------------------------------------------------ CANDIDATES ---- -->
+<section class="view" id="view-candidates">
+  <div class="lab">
+    <div class="panel rail">
+      <h3>Assumptions</h3>
+      <p class="hint">Every number here is yours to own. Move one and the whole
+      inventory re-ranks immediately — nothing is saved until you press Save.</p>
+      <div id="controls"></div>
+      <div style="display:flex; gap:.4rem; margin-top:.9rem; flex-wrap:wrap">
+        <button class="action" id="save-assumptions">Save to config.yml</button>
+        <button class="action ghost" id="reset-assumptions">Reset</button>
+      </div>
+      <p class="footnote">The shipped defaults are plausible placeholders, not
+      market research. Replace the renovation rates with real contractor quotes
+      and the fee percentages with your notary's schedule.</p>
+    </div>
+
+    <div>
+      <div class="kpis" id="candidate-kpis"></div>
+
+      <div class="panel" style="margin-top:.9rem">
+        <div class="note-box" id="thesis-note">…</div>
+        <div class="filters">
+          <div class="field"><span>Thesis</span>
+            <select id="f-condition">
+              <option value="">All candidates</option>
+              <option value="renovation_target,neutral">Renovation thesis only</option>
+              <option value="renovation_target">Stated renovation targets</option>
+              <option value="finished">Finished &amp; under market</option>
+              <option value="unknown">Condition not stated</option>
+            </select>
+          </div>
+          <div class="field"><span>Town</span>
+            <select id="f-town"><option value="">Everywhere</option></select>
+          </div>
+          <div class="field"><span>Sort by</span>
+            <select id="f-sort">
+              <option value="profit_usd">Expected profit</option>
+              <option value="roi_pct">ROI</option>
+              <option value="margin_pct">Margin</option>
+              <option value="discount_to_market_pct">Discount to market</option>
+              <option value="asking_price">Asking price (low→high)</option>
+              <option value="n_comps">Comp count</option>
+            </select>
+          </div>
+          <div class="field"><span>Screens</span>
+            <select id="f-screens">
+              <option value="1">Applied</option>
+              <option value="0">Off — show everything</option>
+            </select>
+          </div>
+          <button class="action ghost" id="export-candidates">Export CSV</button>
+        </div>
+        <div id="candidates-body"><p class="loading">Analysing…</p></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- -------------------------------------------------------- LISTINGS ---- -->
+<section class="view" id="view-listings" hidden>
+  <div class="panel">
+    <h3>All tracked listings</h3>
+    <p class="hint">Everything in the database, whether or not it clears a screen.</p>
+    <div class="filters">
+      <div class="field"><span>Search</span>
+        <input type="search" id="l-q" placeholder="title, description, ref, town">
+      </div>
+      <div class="field"><span>Town</span>
+        <select id="l-town"><option value="">Any</option></select>
+      </div>
+      <div class="field"><span>Min price</span><input type="number" id="l-min-price" step="10000" placeholder="0"></div>
+      <div class="field"><span>Max price</span><input type="number" id="l-max-price" step="10000" placeholder="any"></div>
+      <div class="field"><span>Min m²</span><input type="number" id="l-min-area" step="10" placeholder="0"></div>
+      <div class="field"><span>Status</span>
+        <select id="l-active">
+          <option value="1">Active only</option>
+          <option value="0">Include delisted</option>
+        </select>
+      </div>
+    </div>
+    <div id="listings-body"><p class="loading">Loading…</p></div>
+  </div>
+</section>
+
+<!-- ---------------------------------------------------------- MARKET ---- -->
+<section class="view" id="view-market" hidden>
+  <div class="panel">
+    <h3>Market by town</h3>
+    <div class="note-box">A wide gap between the 25th and 75th percentile $/m²
+    means tired and finished stock trade far apart in that town, which is the
+    precondition a flip needs. Towns with many renovation targets
+    <strong>and</strong> many finished comps are the best hunting grounds — a
+    wide spread on three listings is noise, not a signal.</div>
+    <div class="filters">
+      <div class="field"><span>Minimum listings</span>
+        <select id="m-min">
+          <option value="3">3+ listings (noisy)</option>
+          <option value="8" selected>8+ listings</option>
+          <option value="15">15+ listings</option>
+          <option value="30">30+ listings</option>
+        </select>
+      </div>
+    </div>
+    <div id="market-chart"></div>
+    <div id="market-body"><p class="loading">Loading…</p></div>
+  </div>
+</section>
+
+<!-- --------------------------------------------------------- CHANGES ---- -->
+<section class="view" id="view-changes" hidden>
+  <div class="panel">
+    <h3>Price cuts and delistings</h3>
+    <div class="note-box">A seller who has cut once will usually cut again, so
+    reductions are the strongest motivated-seller signal in this data. A
+    delisting is often a sale — those are what will eventually let you calibrate
+    the model against real exit prices instead of asking prices.</div>
+    <div class="filters">
+      <div class="field"><span>Window</span>
+        <select id="c-days">
+          <option value="7">Last 7 days</option>
+          <option value="30" selected>Last 30 days</option>
+          <option value="90">Last 90 days</option>
+          <option value="365">Last year</option>
+        </select>
+      </div>
+    </div>
+    <div id="changes-body"><p class="loading">Loading…</p></div>
+  </div>
+</section>
+
+<!-- ------------------------------------------------------------ DATA ---- -->
+<section class="view" id="view-data" hidden>
+  <div class="kpis" id="data-kpis"></div>
+
+  <div class="panel" style="margin-top:.9rem">
+    <h3>Collect and update</h3>
+    <p class="hint">One crawl at a time, ~2 seconds between requests, robots.txt
+    enforced on every fetch. A full category sweep is about 250 pages.</p>
+    <div class="filters">
+      <div class="field"><span>Category</span>
+        <select id="j-category"></select>
+      </div>
+      <div class="field"><span>Max pages</span>
+        <input type="number" id="j-max-pages" placeholder="all" min="1" step="1" style="width:110px">
+      </div>
+      <button class="action" id="start-scrape">Start crawl</button>
+      <button class="action ghost" id="start-details">Fill missing descriptions</button>
+      <button class="action danger" id="stop-job" hidden>Stop</button>
+    </div>
+    <p class="footnote">Delisting detection only runs after a complete sweep from
+    page 1 — a capped or stopped crawl skips it, because it cannot tell a
+    withdrawn listing from one it never reached.</p>
+    <div class="jobbar" id="jobbar" hidden>
+      <strong id="job-title">…</strong>
+      <div class="bar"><i id="job-bar" style="width:0%"></i></div>
+      <span id="job-detail" class="muted"></span>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h3>Recent crawls</h3>
+    <div id="runs-body"><p class="loading">Loading…</p></div>
+  </div>
+</section>
+
+</main>
+
+<div class="drawer-backdrop" id="drawer" hidden>
+  <aside class="drawer" id="drawer-content" role="dialog" aria-modal="true"></aside>
+</div>
+<div class="tooltip" id="tooltip"></div>
+<div class="toast" id="toast" hidden></div>
+
+<script src="/app.js"></script>
+</body>
+</html>

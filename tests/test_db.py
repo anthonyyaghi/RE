@@ -198,6 +198,36 @@ def test_refs_needing_detail_tracks_backlog(db):
     assert db.refs_needing_detail() == ["L1"]
 
 
+def test_repair_descriptions_strips_chrome_and_fixes_truncation(db):
+    db.upsert(listing("L1", description="Nice flat\nWhatsApp us\nCall us\n<a"))
+    db.upsert(listing("L2", description="Cut off here......\nWhatsApp us\nCall us"))
+    db.upsert(listing("L3", description="Already clean."))
+
+    counts = db.repair_descriptions()
+
+    assert counts["examined"] == 3
+    assert counts["cleaned"] == 2
+    assert counts["now_truncated"] == 1
+
+    rows = {
+        r["ref"]: r
+        for r in db.conn.execute(
+            "SELECT ref, description, description_truncated FROM properties"
+        ).fetchall()
+    }
+    assert rows["L1"]["description"] == "Nice flat"
+    assert rows["L1"]["description_truncated"] == 0
+    assert rows["L2"]["description"] == "Cut off here..."
+    assert rows["L2"]["description_truncated"] == 1
+    assert rows["L3"]["description"] == "Already clean."
+
+
+def test_repair_is_idempotent(db):
+    db.upsert(listing("L1", description="Nice flat\nWhatsApp us\nCall us\n<a"))
+    db.repair_descriptions()
+    assert db.repair_descriptions()["cleaned"] == 0
+
+
 def test_crawl_run_records_counters(db):
     run_id = db.start_run("for-sale")
     db.finish_run(run_id, status="ok", seen=42, new_listings=7, price_cuts=2)

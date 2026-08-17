@@ -388,6 +388,42 @@ class Database:
             (ref,),
         ).fetchall()
 
+    def repair_descriptions(self) -> dict[str, int]:
+        """Re-clean stored descriptions in place, no refetching required.
+
+        Earlier crawls stored the card's trailing "WhatsApp us / Call us"
+        chrome as part of the description, which also defeated truncation
+        detection. The fix is a pure string transform, so there is no reason to
+        hit the site again for it.
+        """
+        from .parse import clean_blurb
+
+        rows = self.conn.execute(
+            "SELECT ref, description, description_truncated FROM properties "
+            "WHERE description IS NOT NULL"
+        ).fetchall()
+
+        updates: list[tuple[str | None, int, str]] = []
+        for row in rows:
+            cleaned, truncated = clean_blurb(row["description"])
+            if cleaned != row["description"] or int(bool(truncated)) != (
+                row["description_truncated"] or 0
+            ):
+                updates.append((cleaned, int(bool(truncated)), row["ref"]))
+
+        if updates:
+            self.conn.executemany(
+                "UPDATE properties SET description = ?, description_truncated = ? "
+                "WHERE ref = ?",
+                updates,
+            )
+            self.conn.commit()
+        return {
+            "examined": len(rows),
+            "cleaned": len(updates),
+            "now_truncated": sum(1 for u in updates if u[1]),
+        }
+
     def stats(self) -> dict:
         one = lambda sql: self.conn.execute(sql).fetchone()[0]  # noqa: E731
         return {

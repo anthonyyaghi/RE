@@ -17,8 +17,10 @@ deliberately in one place for that reason.
 
 from __future__ import annotations
 
+import math
 import re
 from dataclasses import dataclass
+from functools import lru_cache
 
 # (regex, weight, label). Negative weight = needs work.
 SIGNALS: list[tuple[str, float, str]] = [
@@ -70,11 +72,11 @@ TARGET_THRESHOLD = -0.25
 FINISHED_THRESHOLD = 0.35
 
 
-@dataclass
+@dataclass(frozen=True)
 class ConditionAssessment:
     score: float
     label: str
-    signals: list[str]
+    signals: tuple[str, ...]
 
     @property
     def is_renovation_target(self) -> bool:
@@ -85,15 +87,21 @@ class ConditionAssessment:
         return self.label == "finished"
 
 
+@lru_cache(maxsize=8192)
 def assess(*texts: str | None) -> ConditionAssessment:
     """Score the combined text of a listing (title + description).
 
     We sum matched weights and squash the result, so several weak signals can
     combine but no single phrase can dominate outright.
+
+    Cached: the web UI re-ranks the whole inventory on every assumption change,
+    and re-running ~40 regexes over 2,500 descriptions each time is the bulk of
+    that work. Results depend only on the input text, so caching is safe. The
+    returned object must therefore be treated as immutable.
     """
     blob = " \n ".join(t for t in texts if t)
     if not blob.strip():
-        return ConditionAssessment(0.0, "unknown", [])
+        return ConditionAssessment(0.0, "unknown", ())
 
     total = 0.0
     matched: list[str] = []
@@ -118,12 +126,9 @@ def assess(*texts: str | None) -> ConditionAssessment:
     else:
         label = "unknown"
 
-    return ConditionAssessment(round(score, 3), label, matched)
+    return ConditionAssessment(round(score, 3), label, tuple(matched))
 
 
 def _squash(value: float) -> float:
-    """tanh-like squash without importing math for one call."""
-    # tanh(x) implemented via exp to keep the dependency surface trivial.
-    import math
-
+    """Squash accumulated signal weight into [-1, 1]."""
     return math.tanh(value)
