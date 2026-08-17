@@ -154,3 +154,38 @@ def test_export_writes_stable_snapshots(db, tmp_path):
     before = (outdir / "listings.jsonl.gz").read_bytes()
     export_all(db, outdir)
     assert (outdir / "listings.jsonl.gz").read_bytes() == before
+
+
+def test_restore_round_trips_a_fresh_clone(db, tmp_path):
+    from jskre.export import restore_all
+
+    add_listing(db, "L1", URLS)
+    add_listing(db, "L2", URLS[:2])
+    db.upsert(Listing(ref="L1", url="/properties/x-l1", price_usd=90_000,
+                      area_m2=100.0, town="Jbeil"))  # a price cut -> history row
+    photos.import_result(db, "L1", {"condition": "dated", "evidence": ["x"]}, "m", "b1")
+    outdir = tmp_path / "exports"
+    export_all(db, outdir)
+
+    with Database(tmp_path / "fresh.db") as fresh:
+        counts = restore_all(fresh, outdir)
+        assert counts["properties"] == 2
+        assert counts["price_history"] == 3   # two initial prices + one cut
+        assert counts["photo_assessments"] == 1
+
+        row = fresh.conn.execute(
+            "SELECT price_usd, first_price_usd FROM properties WHERE ref='L1'"
+        ).fetchone()
+        assert row["price_usd"] == 90_000
+        assert row["first_price_usd"] == 100_000
+        # And the restored db is analysable end to end.
+        assert len(fresh.active_listings(["Apartment"])) == 2
+
+
+def test_restore_refuses_nonempty_database(db, tmp_path):
+    from jskre.export import restore_all
+
+    add_listing(db, "L1", URLS)
+    export_all(db, tmp_path / "exports")
+    with pytest.raises(SystemExit, match="Refusing to restore"):
+        restore_all(db, tmp_path / "exports")

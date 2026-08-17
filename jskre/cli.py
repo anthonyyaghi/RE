@@ -90,6 +90,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_export.add_argument("--outdir", default="exports")
 
+    p_restore = sub.add_parser(
+        "restore", help="rebuild the database from exports/ (fresh clones)"
+    )
+    p_restore.add_argument("--outdir", default="exports")
+
     p_serve = sub.add_parser("serve", help="run the web UI")
     p_serve.add_argument("--host", default="127.0.0.1")
     p_serve.add_argument("--port", type=int, default=8765)
@@ -249,6 +254,17 @@ def main(argv: list[str] | None = None) -> int:
 
             for path in export_all(db, args.outdir):
                 print(path)
+            return 0
+
+        if args.command == "restore":
+            from .export import restore_all
+
+            counts = restore_all(db, args.outdir)
+            if not counts:
+                print(f"No snapshots found in {args.outdir}/")
+                return 1
+            for table, n in counts.items():
+                print(f"{table:20} {n:,} rows")
             return 0
 
         if args.command == "repair":
