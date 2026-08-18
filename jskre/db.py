@@ -27,6 +27,7 @@ SCHEMA = """
 CREATE TABLE IF NOT EXISTS properties (
     ref                   TEXT PRIMARY KEY,
     url                   TEXT NOT NULL,
+    source                TEXT NOT NULL DEFAULT 'jskre',
     title                 TEXT,
     property_type         TEXT,
     listing_category      TEXT,          -- e.g. 'apartment-for-sale'
@@ -141,6 +142,9 @@ class Database:
     # All columns the current code expects, with their DDL. Used to bring an
     # older database file up to date.
     EXPECTED_COLUMNS: tuple[tuple[str, str], ...] = (
+        # Databases predating multi-source support hold jskre rows only, so the
+        # default backfills them correctly.
+        ("source", "TEXT NOT NULL DEFAULT 'jskre'"),
         ("title", "TEXT"),
         ("property_type", "TEXT"),
         ("listing_category", "TEXT"),
@@ -315,6 +319,7 @@ class Database:
         seen_refs: Iterable[str],
         category: str | None,
         threshold: int = 2,
+        source: str | None = None,
     ) -> int:
         """Retire active listings a complete crawl failed to see.
 
@@ -328,11 +333,17 @@ class Database:
         of listings actually retired, not merely missed.
         """
         seen = set(seen_refs)
-        rows = self.conn.execute(
-            "SELECT ref, missed_crawls FROM properties WHERE is_active = 1"
-            + (" AND listing_category = ?" if category else ""),
-            (category,) if category else (),
-        ).fetchall()
+        sql = "SELECT ref, missed_crawls FROM properties WHERE is_active = 1"
+        params: list[object] = []
+        if category:
+            sql += " AND listing_category = ?"
+            params.append(category)
+        if source:
+            # Without this a complete crawl of one site would retire every
+            # listing belonging to the others, which it never even looked at.
+            sql += " AND source = ?"
+            params.append(source)
+        rows = self.conn.execute(sql, params).fetchall()
 
         missed = [r for r in rows if r["ref"] not in seen]
         if not missed:
@@ -374,15 +385,23 @@ class Database:
             params.extend(property_types)
         return self.conn.execute(sql, params).fetchall()
 
-    def refs_needing_detail(self, limit: int | None = None) -> list[str]:
+    def refs_needing_detail(
+        self, limit: int | None = None, source: str | None = None
+    ) -> list[str]:
         sql = (
             "SELECT ref FROM properties WHERE is_active = 1 AND ("
             "detail_fetched_at IS NULL OR description_truncated = 1"
-            ") ORDER BY last_seen DESC"
+            ")"
         )
+        params: list[object] = []
+        if source:
+            # Each site's detail pass can only fetch its own URLs.
+            sql += " AND source = ?"
+            params.append(source)
+        sql += " ORDER BY last_seen DESC"
         if limit:
             sql += f" LIMIT {int(limit)}"
-        return [r["ref"] for r in self.conn.execute(sql).fetchall()]
+        return [r["ref"] for r in self.conn.execute(sql, params).fetchall()]
 
     def url_for(self, ref: str) -> str | None:
         row = self.conn.execute(

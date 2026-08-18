@@ -248,6 +248,33 @@ def test_bookmark_toggle_and_note_semantics(db):
     assert db.bookmark_map()["L1"]["note"] is None
 
 
+def test_listings_default_to_the_jskre_source(db):
+    db.upsert(listing("L1"))
+    row = db.conn.execute("SELECT source FROM properties WHERE ref='L1'").fetchone()
+    assert row["source"] == "jskre"
+
+
+def test_delisting_is_scoped_to_its_source(db):
+    """A complete crawl of one site must not retire another site's listings."""
+    db.upsert(listing("L1"), category="for-sale")
+    db.upsert(listing(ref="confidence:9", source="confidence"), category="for-sale")
+
+    # jskre saw L1 and nothing else; the other site's row was never looked at.
+    gone = db.mark_delisted({"L1"}, category="for-sale", threshold=1, source="jskre")
+
+    assert gone == 0
+    assert db.stats()["active"] == 2
+
+
+def test_detail_backlog_is_scoped_to_its_source(db):
+    db.upsert(listing("L1"))
+    db.upsert(listing(ref="confidence:9", source="confidence"))
+
+    assert db.refs_needing_detail(source="jskre") == ["L1"]
+    assert db.refs_needing_detail(source="confidence") == ["confidence:9"]
+    assert set(db.refs_needing_detail()) == {"L1", "confidence:9"}
+
+
 def test_crawl_run_records_counters(db):
     run_id = db.start_run("for-sale")
     db.finish_run(run_id, status="ok", seen=42, new_listings=7, price_cuts=2)

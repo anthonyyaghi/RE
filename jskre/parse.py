@@ -69,6 +69,10 @@ class Listing:
 
     ref: str
     url: str
+    # Which site this record came from. Refs are only unique *within* a source,
+    # so adapters for other sites must namespace theirs (e.g. 'confidence:1234')
+    # to keep the primary key global.
+    source: str = "jskre"
     title: str | None = None
     property_type: str | None = None
     price_usd: int | None = None

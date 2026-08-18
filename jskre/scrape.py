@@ -29,6 +29,10 @@ from .parse import (
 
 log = logging.getLogger(__name__)
 
+# Identifies rows this crawler owns. Delisting and the detail backlog are scoped
+# to it so adding another site's adapter cannot disturb jskre's rows.
+SOURCE = "jskre"
+
 # Categories worth tracking for a renovate-and-resell strategy. 'for-sale' is
 # the superset; the others let you crawl a narrower slice more often.
 CATEGORIES = {
@@ -187,7 +191,10 @@ def crawl_index(
         )
         if result.complete:
             result.delisted = db.mark_delisted(
-                result.seen_refs, category, threshold=delist_after_missed_crawls
+                result.seen_refs,
+                category,
+                threshold=delist_after_missed_crawls,
+                source=SOURCE,
             )
 
         db.finish_run(
@@ -219,7 +226,9 @@ def crawl_details(
     should_stop: Callable[[], bool] | None = None,
 ) -> dict[str, int]:
     """Fetch detail pages to fill in full descriptions and photo URLs."""
-    targets = refs if refs is not None else db.refs_needing_detail(limit)
+    targets = (
+        refs if refs is not None else db.refs_needing_detail(limit, source=SOURCE)
+    )
     counts = {"fetched": 0, "updated": 0, "missing": 0, "failed": 0, "total": len(targets)}
 
     for i, ref in enumerate(targets, start=1):
