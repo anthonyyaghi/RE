@@ -67,6 +67,36 @@ def _redact(headers: dict) -> dict:
     }
 
 
+def _launch_help(exc: Exception) -> str:
+    """Chromium failing to start is nearly always a missing-library problem.
+
+    The browser binary downloads fine, but it needs shared libraries that a
+    desktop install usually has and a server install usually does not. The
+    traceback for this buries a one-line cause under a screenful of flags, so
+    translate it into the two commands that actually fix it.
+    """
+    text = str(exc)
+    missing = re.search(r"error while loading shared libraries: ([^:]+):", text)
+    lines = ["\nChromium could not start."]
+    if missing:
+        lines.append(f"Missing system library: {missing.group(1)}")
+    lines += [
+        "",
+        "Install the browser's system dependencies (needs root):",
+        "",
+        "    sudo $(which playwright) install-deps chromium",
+        "",
+        "If you would rather not use sudo and already have Chrome installed,",
+        "point the probe at it instead -- no download and no system packages:",
+        "",
+        "    python tools/probe_confidence.py --channel chrome",
+        "",
+        "Original error:",
+        text.split("Call log:")[0].strip()[:600],
+    ]
+    return "\n".join(lines)
+
+
 def _slug(url: str, index: int) -> str:
     tail = re.sub(r"[^A-Za-z0-9]+", "-", url.split("?")[0].split("//")[-1]).strip("-")
     return f"{index:03d}-{tail[-70:]}.json"
@@ -103,6 +133,8 @@ def main() -> int:
     ap.add_argument("--scrolls", type=int, default=3,
                     help="scroll-to-bottom attempts, to trigger paging (default 3)")
     ap.add_argument("--proxy", default=None, help="proxy URL, if your network needs one")
+    ap.add_argument("--channel", default=None,
+                    help="use an installed browser instead, e.g. chrome or msedge")
     ap.add_argument("--chromium", default=None,
                     help="path to a Chromium binary, if the bundled one is missing")
     ap.add_argument("--url", default=LISTINGS_URL,
@@ -120,7 +152,13 @@ def main() -> int:
             launch["proxy"] = {"server": args.proxy}
         if args.chromium:
             launch["executable_path"] = args.chromium
-        browser = pw.chromium.launch(**launch)
+        if args.channel:
+            launch["channel"] = args.channel
+        try:
+            browser = pw.chromium.launch(**launch)
+        except Exception as exc:
+            print(_launch_help(exc), file=sys.stderr)
+            return 2
         context = browser.new_context(
             user_agent=UA, viewport={"width": 1440, "height": 1000}
         )
