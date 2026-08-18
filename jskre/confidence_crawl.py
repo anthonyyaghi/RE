@@ -41,7 +41,13 @@ DEFAULT_DELAY = 2.0
 
 _FETCH_JS = """
 async ([url, headers, body]) => {
-  const options = {method: body ? 'POST' : 'GET', headers};
+  // The captured headers come from whatever API call the page happened to
+  // make first. On the live site that is a GET, which carries the key but no
+  // Content-Type -- and the backend answers a POST without one with HTTP 415.
+  // So the JSON content type is asserted here rather than hoped for.
+  const merged = {...headers};
+  if (body) merged['Content-Type'] = 'application/json';
+  const options = {method: body ? 'POST' : 'GET', headers: merged};
   if (body) options.body = JSON.stringify(body);
   const response = await fetch(url, options);
   let payload = null;
