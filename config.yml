@@ -81,3 +81,12 @@ assumptions:
   min_roi: 0.15                # 15% return on all-in cost
   max_price_usd: null          # your budget ceiling, e.g. 250000
   min_area_m2: 60
+
+# ---------------------------------------------------------------- sources
+# Confidence Real Estate is a React app with no server-rendered HTML, so it is
+# collected by driving a real browser (`jskre confidence`) rather than by
+# fetching pages. Needs Playwright: pip install playwright && playwright
+# install chromium.
+confidence:
+  page_size: 50          # the site itself uses 9; it may cap us back down
+  delay_seconds: 2.0     # same pace as the jskre crawl

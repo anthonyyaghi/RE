@@ -87,6 +87,12 @@ class Listing:
     description_truncated: bool = False
     photo_count: int | None = None
     image_urls: list[str] = field(default_factory=list)
+    # The agency's own reference, where it differs from the id we key on.
+    source_reference: str | None = None
+    # Only some sources publish these. Days-on-market and building age are
+    # genuinely useful and simply absent from jskre.
+    published_at: str | None = None
+    year_built: int | None = None
 
     @property
     def price_per_m2(self) -> float | None:

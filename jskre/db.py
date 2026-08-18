@@ -43,6 +43,9 @@ CREATE TABLE IF NOT EXISTS properties (
     description_truncated INTEGER DEFAULT 0,
     photo_count           INTEGER,
     image_urls            TEXT,          -- JSON array
+    source_reference      TEXT,          -- the agency's own ref, e.g. '#KS137209'
+    published_at          TEXT,          -- when the source first published it
+    year_built            INTEGER,
     price_per_m2          REAL,
     first_seen            TEXT NOT NULL,
     last_seen             TEXT NOT NULL,
@@ -160,6 +163,9 @@ class Database:
         ("description_truncated", "INTEGER DEFAULT 0"),
         ("photo_count", "INTEGER"),
         ("image_urls", "TEXT"),
+        ("source_reference", "TEXT"),
+        ("published_at", "TEXT"),
+        ("year_built", "INTEGER"),
         ("price_per_m2", "REAL"),
         ("first_price_usd", "INTEGER"),
         ("price_changes", "INTEGER DEFAULT 0"),

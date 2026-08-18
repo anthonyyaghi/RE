@@ -41,6 +41,22 @@ def build_parser() -> argparse.ArgumentParser:
     p_scrape.add_argument("--max-pages", type=int, default=None)
     p_scrape.add_argument("--start-page", type=int, default=1)
 
+    p_conf = sub.add_parser(
+        "confidence", help="collect Confidence Real Estate listings (needs Playwright)"
+    )
+    p_conf.add_argument("--pages", type=int, default=None,
+                        help="stop after this many pages (default: all)")
+    p_conf.add_argument("--page-size", type=int, default=None,
+                        help="listings per request; the server may cap this")
+    p_conf.add_argument("--delay", type=float, default=None,
+                        help="seconds between requests (default: 2)")
+    p_conf.add_argument("--no-details", action="store_true",
+                        help="skip the pass that fetches descriptions and photos")
+    p_conf.add_argument("--headed", action="store_true", help="show the browser")
+    p_conf.add_argument("--channel", default=None,
+                        help="use an installed browser, e.g. chrome")
+    p_conf.add_argument("--chromium", default=None, help="path to a Chromium binary")
+
     p_details = sub.add_parser("details", help="fetch detail pages for full text")
     p_details.add_argument("--limit", type=int, default=200)
     p_details.add_argument("--ref", action="append", help="specific reference(s)")
@@ -161,6 +177,29 @@ def main(argv: list[str] | None = None) -> int:
                 print(
                     "Partial crawl: delisting detection skipped "
                     "(needs a full sweep from page 1)."
+                )
+            return 0
+
+        if args.command == "confidence":
+            from .confidence_crawl import crawl as crawl_confidence, DEFAULT_DELAY, DEFAULT_PAGE_SIZE
+
+            settings = config.get("confidence", {})
+            result = crawl_confidence(
+                db,
+                pages=args.pages,
+                page_size=args.page_size or int(settings.get("page_size", DEFAULT_PAGE_SIZE)),
+                delay=args.delay if args.delay is not None
+                else float(settings.get("delay_seconds", DEFAULT_DELAY)),
+                details=not args.no_details,
+                headed=args.headed,
+                channel=args.channel,
+                chromium=args.chromium,
+            )
+            print(result.summary())
+            if not result.complete:
+                print(
+                    "Partial crawl: delisting detection skipped "
+                    "(needs a sweep that reaches the last page)."
                 )
             return 0
 
